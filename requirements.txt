@@ -1,0 +1,4 @@
+Flask==2.3.3
+firebase-admin==6.4.0
+aiohttp==3.9.1
+python-dotenv==1.0.0
