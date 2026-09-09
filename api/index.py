@@ -1,19 +1,17 @@
-from flask import Flask, request, redirect, jsonify, render_template, session, flash, url_for
+from flask import Flask, request, redirect, jsonify
 import os
 import json
 import secrets
 import asyncio
 import aiohttp
-from datetime import datetime, timedelta
+from datetime import datetime
 import logging
-from functools import wraps
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
-app.secret_key = os.getenv('SECRET_KEY', secrets.token_hex(32))
-app.permanent_session_lifetime = timedelta(hours=24)
+app.secret_key = secrets.token_hex(32)
 
 # ============ FIREBASE SETUP ============
 try:
@@ -43,362 +41,213 @@ if FIREBASE_AVAILABLE:
     except Exception as e:
         logger.error(f"❌ Firebase error: {e}")
 
-# ============ HELPER FUNCTIONS ============
-def get_server_stats():
-    """Get REAL statistics from Firebase"""
-    stats = {
-        'total_servers': 0,
-        'total_users': 0,
-        'total_commands': 0,
-        'uptime': '99.9%'
-    }
-    
-    if rtdb_client:
-        try:
-            # Get all guilds
-            guilds = rtdb_client.child('guilds').get()
-            if guilds:
-                stats['total_servers'] = len(guilds)
-                
-                # Count verified users across all guilds
-                total_users = 0
-                for guild_id, guild_data in guilds.items():
-                    if isinstance(guild_data, dict):
-                        verified = guild_data.get('verified', {})
-                        if isinstance(verified, dict):
-                            total_users += len(verified)
-                stats['total_users'] = total_users
-            
-            # Get command count from stats
-            cmd_stats = rtdb_client.child('stats/commands').get()
-            if cmd_stats:
-                stats['total_commands'] = cmd_stats.get('total', 0)
-                
-        except Exception as e:
-            logger.error(f"Error fetching stats: {e}")
-    
-    return stats
-
-def get_commands_list():
-    """Get REAL commands from Firebase"""
-    commands = []
-    
-    if rtdb_client:
-        try:
-            cmd_data = rtdb_client.child('commands').get()
-            if cmd_data:
-                # Convert to list if it's a dict
-                if isinstance(cmd_data, dict):
-                    return list(cmd_data.values())
-                return cmd_data
-        except Exception as e:
-            logger.error(f"Error fetching commands: {e}")
-    
-    # Fallback default commands if Firebase fails
-    return [
-        {'name': '/ban', 'desc': 'Ban a user from the server', 'perm': 'admin'},
-        {'name': '/kick', 'desc': 'Kick a user from the server', 'perm': 'admin'},
-        {'name': '/ping', 'desc': 'Check bot latency', 'perm': 'user'},
-        {'name': '/setup', 'desc': 'Setup the server automatically', 'perm': 'admin'},
-        {'name': '/info', 'desc': 'Get server information', 'perm': 'user'},
-        {'name': '/verify', 'desc': 'Start Discord OAuth verification', 'perm': 'user'},
-        {'name': '/sync', 'desc': 'Sync members and generate credentials', 'perm': 'admin'},
-        {'name': '/credentials', 'desc': 'Get your login credentials', 'perm': 'user'},
-        {'name': '/get_creds', 'desc': 'Get credentials for a user', 'perm': 'admin'},
-        {'name': '/reset_creds', 'desc': 'Reset credentials for a user', 'perm': 'admin'}
-    ]
-
-def get_features():
-    """Get REAL features from Firebase"""
-    features = []
-    
-    if rtdb_client:
-        try:
-            feat_data = rtdb_client.child('features').get()
-            if feat_data:
-                if isinstance(feat_data, dict):
-                    return list(feat_data.values())
-                return feat_data
-        except Exception as e:
-            logger.error(f"Error fetching features: {e}")
-    
-    # Fallback default features
-    return [
-        {'icon': '◈', 'title': 'Moderation', 'desc': 'Keep your server safe with advanced moderation tools and auto-actions.'},
-        {'icon': '⚙', 'title': 'Utility', 'desc': 'Useful tools like server info, user info, reminders, and more.'},
-        {'icon': '⌁', 'title': 'Fun', 'desc': 'Games, memes, economy, and entertainment for your community.'},
-        {'icon': '◇', 'title': 'Security', 'desc': 'Anti-raid, link protection, and advanced security features.'},
-        {'icon': '✣', 'title': 'Customisation', 'desc': 'Make it yours with custom commands, roles, and settings.'},
-        {'icon': 'ϟ', 'title': 'Fast & Reliable', 'desc': 'Built for speed, with 24/7 uptime and minimal downtime.'}
-    ]
-
-def verify_credentials(username, password):
-    """Verify login credentials against Firebase"""
-    if not rtdb_client:
-        return None
-    
-    try:
-        creds_data = rtdb_client.child('credentials').get()
-        
-        if not creds_data:
-            return None
-        
-        for user_id, creds in creds_data.items():
-            if creds.get('username') == username and creds.get('password') == password:
-                return {
-                    'user_id': user_id,
-                    'username': creds.get('username'),
-                    'role': creds.get('role', 'user'),
-                    'created_at': creds.get('created_at')
-                }
-        
-        return None
-    except Exception as e:
-        logger.error(f"❌ Verification error: {e}")
-        return None
-
-def get_user_data(user_id):
-    """Get user data from Firebase"""
-    if not rtdb_client:
-        return None
-    
-    try:
-        creds = rtdb_client.child(f'credentials/{user_id}').get()
-        if not creds:
-            return None
-        
-        user_data = {
-            'user_id': user_id,
-            'username': creds.get('username'),
-            'role': creds.get('role', 'user'),
-            'created_at': creds.get('created_at'),
-            'verified_in': []
-        }
-        
-        # Find which guilds this user is verified in
-        guilds = rtdb_client.child('guilds').get()
-        if guilds:
-            for guild_id, guild_data in guilds.items():
-                if isinstance(guild_data, dict):
-                    verified = guild_data.get('verified', {})
-                    if user_id in verified:
-                        user_data['verified_in'].append({
-                            'guild_id': guild_id,
-                            'guild_name': guild_data.get('config', {}).get('name', 'Unknown Server')
-                        })
-        
-        return user_data
-    except Exception as e:
-        logger.error(f"❌ Error getting user data: {e}")
-        return None
-
-def get_all_users():
-    """Get all users from Firebase"""
-    if not rtdb_client:
-        return []
-    
-    try:
-        creds_data = rtdb_client.child('credentials').get()
-        if not creds_data:
-            return []
-        
-        users = []
-        for user_id, creds in creds_data.items():
-            users.append({
-                'user_id': user_id,
-                'username': creds.get('username'),
-                'role': creds.get('role', 'user'),
-                'created_at': creds.get('created_at')
-            })
-        
-        return sorted(users, key=lambda x: x.get('created_at', ''), reverse=True)
-    except Exception as e:
-        logger.error(f"❌ Error getting users: {e}")
-        return []
-
-def update_user_role(user_id, new_role):
-    """Update a user's role in Firebase"""
-    if not rtdb_client:
-        return False
-    
-    try:
-        creds = rtdb_client.child(f'credentials/{user_id}').get()
-        if not creds:
-            return False
-        
-        creds['role'] = new_role
-        rtdb_client.child(f'credentials/{user_id}').set(creds)
-        logger.info(f"✅ Updated role for {user_id} to {new_role}")
-        return True
-    except Exception as e:
-        logger.error(f"❌ Error updating role: {e}")
-        return False
-
-# ============ DECORATORS ============
-def login_required(f):
-    @wraps(f)
-    def decorated_function(*args, **kwargs):
-        if 'user_id' not in session:
-            flash('Please login to access this page.', 'warning')
-            return redirect(url_for('login_page'))
-        return f(*args, **kwargs)
-    return decorated_function
-
 # ============ ROUTES ============
-
 @app.route('/')
 def home():
-    """Landing page with REAL data"""
-    stats = get_server_stats()
-    features = get_features()
-    
-    return render_template('login.html', 
-                         stats=stats,
-                         features=features[:6])
+    return """
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>EDITH Bot - Verification</title>
+        <style>
+            * { margin: 0; padding: 0; box-sizing: border-box; }
+            body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #1a1a2e; color: white; display: flex; justify-content: center; align-items: center; min-height: 100vh; padding: 20px; }
+            .container { background: #2d2d44; padding: 50px; border-radius: 20px; text-align: center; max-width: 500px; width: 100%; box-shadow: 0 20px 60px rgba(0,0,0,0.5); border: 1px solid #3d3d5c; }
+            .logo { font-size: 80px; margin-bottom: 20px; }
+            h1 { color: #ffffff; font-size: 32px; margin-bottom: 10px; }
+            .subtitle { color: #b5b5c4; font-size: 16px; margin-bottom: 30px; }
+            .status { background: #1e1e32; padding: 20px; border-radius: 12px; margin: 20px 0; }
+            .status .label { color: #6d6d8a; font-size: 13px; }
+            .status .value { color: #4caf50; font-weight: 600; font-size: 16px; }
+            .footer { color: #4d4d6a; font-size: 12px; margin-top: 30px; border-top: 1px solid #2d2d44; padding-top: 20px; }
+            .badge { display: inline-block; background: #4caf50; color: white; padding: 4px 12px; border-radius: 20px; font-size: 11px; font-weight: 600; }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="logo">🤖</div>
+            <h1>EDITH Bot</h1>
+            <p class="subtitle">Ultimate Server Management Bot</p>
+            <div class="status">
+                <div style="margin-bottom: 10px;"><span class="label">Status</span></div>
+                <div><span class="value">✅ Online & Ready</span></div>
+                <div style="margin-top: 10px;"><span class="badge">Verification System Active</span></div>
+            </div>
+            <p style="color: #b5b5c4; font-size: 14px; margin: 20px 0;">
+                Use <code style="background: #1a1a2e; padding: 4px 8px; border-radius: 4px; color: #5865f2;">/verify</code> in Discord to start verification.
+            </p>
+            <p class="footer">EDITH Authentication System v2.0 • Built with ❤️</p>
+        </div>
+    </body>
+    </html>
+    """
 
-@app.route('/login', methods=['GET', 'POST'])
-def login_page():
-    """Login page"""
-    if request.method == 'POST':
-        username = request.form.get('username', '').strip()
-        password = request.form.get('password', '').strip()
-        
-        if not username or not password:
-            flash('Please enter both username and password.', 'warning')
-            return render_template('login.html')
-        
-        user_data = verify_credentials(username, password)
-        
-        if user_data:
-            session.permanent = True
-            session['user_id'] = user_data['user_id']
-            session['username'] = user_data['username']
-            session['role'] = user_data['role']
-            session['logged_in'] = True
-            
-            logger.info(f"✅ User logged in: {username} ({user_data['role']})")
-            flash(f'Welcome back, {username}!', 'success')
-            
-            role = user_data['role']
-            if role == 'super_admin':
-                return redirect(url_for('superadmin_dashboard'))
-            elif role == 'moderator':
-                return redirect(url_for('moderator_dashboard'))
-            else:
-                return redirect(url_for('user_dashboard'))
-        else:
-            flash('Invalid username or password.', 'danger')
-            return render_template('login.html')
-    
-    if 'user_id' in session:
-        role = session.get('role', 'user')
-        if role == 'super_admin':
-            return redirect(url_for('superadmin_dashboard'))
-        elif role == 'moderator':
-            return redirect(url_for('moderator_dashboard'))
-        else:
-            return redirect(url_for('user_dashboard'))
-    
-    return render_template('login.html')
-
-@app.route('/dashboard/user')
-@login_required
-def user_dashboard():
-    """User dashboard"""
-    stats = get_server_stats()
-    commands = get_commands_list()
-    user_data = get_user_data(session.get('user_id'))
-    
-    return render_template('user.html', 
-                         user=user_data,
-                         stats=stats,
-                         commands=commands[:8])
-
-@app.route('/dashboard/moderator')
-@login_required
-def moderator_dashboard():
-    """Moderator dashboard"""
-    if session.get('role') not in ['moderator', 'super_admin']:
-        flash('Access denied. Moderator privileges required.', 'danger')
-        return redirect(url_for('user_dashboard'))
-    
-    stats = get_server_stats()
-    commands = get_commands_list()
-    user_data = get_user_data(session.get('user_id'))
-    
-    return render_template('moderator.html', 
-                         user=user_data,
-                         stats=stats,
-                         commands=commands[:8])
-
-@app.route('/dashboard/superadmin')
-@login_required
-def superadmin_dashboard():
-    """Super Admin dashboard"""
-    if session.get('role') != 'super_admin':
-        flash('Access denied. Super Admin privileges required.', 'danger')
-        return redirect(url_for('user_dashboard'))
-    
-    stats = get_server_stats()
-    commands = get_commands_list()
-    user_data = get_user_data(session.get('user_id'))
-    all_users = get_all_users()
-    
-    return render_template('superadmin.html', 
-                         user=user_data,
-                         stats=stats,
-                         commands=commands[:8],
-                         all_users=all_users)
-
-@app.route('/admin/update_role', methods=['POST'])
-@login_required
-def update_role():
-    """Update user role (Super Admin only)"""
-    if session.get('role') != 'super_admin':
-        flash('Access denied.', 'danger')
-        return redirect(url_for('user_dashboard'))
-    
-    user_id = request.form.get('user_id')
-    new_role = request.form.get('new_role')
-    
-    if not user_id or not new_role:
-        flash('Missing required fields.', 'danger')
-        return redirect(url_for('superadmin_dashboard'))
-    
-    if new_role not in ['user', 'moderator', 'super_admin']:
-        flash('Invalid role.', 'danger')
-        return redirect(url_for('superadmin_dashboard'))
-    
-    if update_user_role(user_id, new_role):
-        flash(f'✅ User role updated to {new_role}.', 'success')
-    else:
-        flash('❌ Failed to update user role.', 'danger')
-    
-    return redirect(url_for('superadmin_dashboard'))
-
-@app.route('/logout', methods=['POST'])
-def logout():
-    username = session.get('username', 'Unknown')
-    session.clear()
-    flash(f'Goodbye, {username}!', 'success')
-    return redirect(url_for('login_page'))
-
-# ============ OAUTH CALLBACK ============
 @app.route('/callback')
 def oauth_callback():
-    # Your existing callback code here
-    pass
+    try:
+        code = request.args.get('code')
+        state = request.args.get('state')
+        error = request.args.get('error')
+        
+        logger.info(f"📥 OAuth Callback received!")
+        
+        if error:
+            return f"<h1>Error: {error}</h1><p>Please try /verify again.</p>"
+        
+        if not code:
+            return "<h1>No code provided</h1><p>Please try /verify again.</p>", 400
+        
+        session = None
+        if state and rtdb_client:
+            try:
+                session = rtdb_client.child(f'oauth_states/{state}').get()
+                if session:
+                    rtdb_client.child(f'oauth_states/{state}').delete()
+            except:
+                pass
+        
+        if not session:
+            return "<h1>Session expired</h1><p>Please run /verify again.</p>"
+        
+        user_id = session['user_id']
+        guild_id = session['guild_id']
+        
+        # Exchange code for token
+        async def exchange_code():
+            data = {
+                'client_id': os.getenv('CLIENT_ID'),
+                'client_secret': os.getenv('CLIENT_SECRET'),
+                'grant_type': 'authorization_code',
+                'code': code,
+                'redirect_uri': os.getenv('REDIRECT_URI', 'https://your-vercel-app.vercel.app/callback')
+            }
+            async with aiohttp.ClientSession() as session:
+                async with session.post('https://discord.com/api/oauth2/token', data=data) as resp:
+                    if resp.status == 200:
+                        return await resp.json()
+                    return None
+        
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        token_data = loop.run_until_complete(exchange_code())
+        loop.close()
+        
+        if not token_data:
+            return "<h1>Token exchange failed</h1><p>Please try again.</p>"
+        
+        access_token = token_data.get('access_token')
+        
+        async def get_user_data():
+            headers = {'Authorization': f'Bearer {access_token}'}
+            async with aiohttp.ClientSession() as session:
+                async with session.get('https://discord.com/api/users/@me', headers=headers) as resp:
+                    if resp.status == 200:
+                        return await resp.json()
+                    return None
+        
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        user_data = loop.run_until_complete(get_user_data())
+        loop.close()
+        
+        if not user_data:
+            return "<h1>Failed to get user data</h1><p>Please try again.</p>"
+        
+        username = user_data.get('username')
+        discord_id = user_data.get('id')
+        email = user_data.get('email', 'Not provided')
+        avatar = user_data.get('avatar')
+        avatar_url = f"https://cdn.discordapp.com/avatars/{discord_id}/{avatar}.png" if avatar else ""
+        
+        # Store in Firebase
+        if rtdb_client:
+            try:
+                rtdb_client.child(f'guilds/{guild_id}/verified/{discord_id}').set({
+                    'discord_id': discord_id,
+                    'username': username,
+                    'email': email,
+                    'avatar': avatar_url,
+                    'guild_id': guild_id,
+                    'verified_at': datetime.now().isoformat(),
+                    'verified': True
+                })
+                logger.info(f"✅ Stored in Firebase: {username}")
+            except Exception as e:
+                logger.error(f"❌ Firebase storage failed: {e}")
+        
+        return f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Verification Successful</title>
+            <style>
+                * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+                body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #1a1a2e; color: white; display: flex; justify-content: center; align-items: center; min-height: 100vh; padding: 20px; }}
+                .container {{ background: #2d2d44; padding: 50px; border-radius: 20px; text-align: center; max-width: 500px; width: 100%; box-shadow: 0 20px 60px rgba(0,0,0,0.5); border: 1px solid #3d3d5c; }}
+                .success {{ color: #4caf50; font-size: 80px; margin-bottom: 20px; }}
+                h1 {{ color: #ffffff; font-size: 28px; margin-bottom: 10px; }}
+                .subtitle {{ color: #b5b5c4; font-size: 16px; margin-bottom: 30px; }}
+                .user-info {{ background: #1e1e32; border-radius: 12px; padding: 20px; margin: 20px 0; text-align: left; }}
+                .user-info .row {{ display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #2d2d44; }}
+                .user-info .row:last-child {{ border-bottom: none; }}
+                .user-info .label {{ color: #6d6d8a; font-size: 13px; }}
+                .user-info .value {{ color: #ffffff; font-size: 14px; }}
+                .status-box {{ padding: 15px; border-radius: 10px; margin: 15px 0; background: #1e1e32; color: #4caf50; font-weight: 600; }}
+                .button {{ background: #5865f2; color: white; border: none; padding: 16px 40px; font-size: 18px; font-weight: 600; border-radius: 10px; cursor: pointer; width: 100%; margin-top: 20px; text-decoration: none; display: inline-block; }}
+                .button:hover {{ background: #4752c4; transform: translateY(-2px); box-shadow: 0 10px 30px rgba(88,101,242,0.3); }}
+                .footer {{ margin-top: 25px; color: #4d4d6a; font-size: 12px; border-top: 1px solid #2d2d44; padding-top: 20px; }}
+                .badge {{ display: inline-block; background: #4caf50; color: white; padding: 4px 12px; border-radius: 20px; font-size: 11px; font-weight: 600; }}
+                .avatar {{ width: 80px; height: 80px; border-radius: 50%; margin: 10px auto; display: block; border: 3px solid #5865f2; }}
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <div class="success">✅</div>
+                <h1>Verification Successful!</h1>
+                <p class="subtitle">Welcome to the server! 🎉</p>
+                
+                <img src="{avatar_url}" class="avatar" onerror="this.style.display='none'">
+                
+                <div class="user-info">
+                    <div class="row">
+                        <span class="label">👤 Username</span>
+                        <span class="value">{username}</span>
+                    </div>
+                    <div class="row">
+                        <span class="label">🆔 User ID</span>
+                        <span class="value">{discord_id}</span>
+                    </div>
+                    <div class="row">
+                        <span class="label">📧 Email</span>
+                        <span class="value">{email}</span>
+                    </div>
+                    <div class="row">
+                        <span class="label">🔓 Status</span>
+                        <span class="value"><span class="badge">Verified ✅</span></span>
+                    </div>
+                </div>
+                
+                <div class="status-box">✅ You now have full access to the server!</div>
+                
+                <a href="https://discord.com/app" class="button">Return to Discord</a>
+                
+                <p class="footer">You can now close this tab. A verification DM has been sent to you.</p>
+            </div>
+        </body>
+        </html>
+        """
+    
+    except Exception as e:
+        logger.error(f"❌ Callback error: {e}")
+        return f"<h1>Error: {str(e)}</h1>"
 
-# ============ API ENDPOINTS ============
-@app.route('/api/stats')
-def api_stats():
-    stats = get_server_stats()
-    return jsonify(stats)
-
-@app.route('/api/commands')
-def api_commands():
-    commands = get_commands_list()
-    return jsonify({'commands': commands, 'count': len(commands)})
+@app.route('/health')
+def health():
+    return jsonify({
+        'status': 'online',
+        'firebase': '✅ Connected' if rtdb_client else '❌ Not connected',
+        'timestamp': datetime.now().isoformat()
+    })
 
 @app.route('/api/users')
 def api_users():
@@ -406,25 +255,15 @@ def api_users():
         return jsonify({'error': 'Firebase not connected'}), 500
     
     try:
-        users = rtdb_client.child('credentials').get()
+        users = rtdb_client.child('all_users').get()
         if users:
             return jsonify({'users': users, 'count': len(users)})
         return jsonify({'users': {}, 'count': 0})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-@app.route('/health')
-def health():
-    stats = get_server_stats()
-    return jsonify({
-        'status': 'online',
-        'firebase': '✅ Connected' if rtdb_client else '❌ Not connected',
-        'timestamp': datetime.now().isoformat(),
-        'stats': stats
-    })
-
-# ============ RUN ============
+# Vercel needs this
 app.debug = False
 
 if __name__ == "__main__":
-    app.run(host='0.0.0.0', port=8080, debug=True)
+    app.run(host='0.0.0.0', port=8080)
