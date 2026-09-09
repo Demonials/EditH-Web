@@ -41,6 +41,33 @@ if FIREBASE_AVAILABLE:
     except Exception as e:
         logger.error(f"❌ Firebase error: {e}")
 
+# ============ FIREBASE HELPERS ============
+def firebase_required():
+    if not rtdb_client:
+        logger.error('Firebase is unavailable; refusing to process verification')
+        return False
+    return True
+
+def firebase_get(path):
+    if not rtdb_client: return None
+    try: return rtdb_client.child(path).get()
+    except Exception as e:
+        logger.error(f'Firebase get failed at {path}: {e}'); return None
+
+def firebase_set(path, value):
+    if not rtdb_client: return False
+    try:
+        rtdb_client.child(path).set(value); return True
+    except Exception as e:
+        logger.error(f'Firebase set failed at {path}: {e}'); return False
+
+def firebase_delete(path):
+    if not rtdb_client: return False
+    try:
+        rtdb_client.child(path).delete(); return True
+    except Exception as e:
+        logger.error(f'Firebase delete failed at {path}: {e}'); return False
+
 # ============ ROUTES ============
 @app.route('/static/<path:filename>')
 def static_files(filename):
@@ -105,15 +132,15 @@ def oauth_callback():
         if not code:
             return "<h1>No code provided</h1><p>Please try /verify again.</p>", 400
         
-        session = None
-        if state and rtdb_client:
-            try:
-                session = rtdb_client.child(f'oauth_states/{state}').get()
-            except Exception as e:
-                logger.error(f'❌ OAuth state lookup failed: {e}')
+        if not state:
+            return "<h1>Invalid verification link</h1><p>No verification state was supplied. Please run /verify again.</p>", 400
+        if not firebase_required():
+            return "<h1>Verification temporarily unavailable</h1><p>Firebase is not connected.</p>", 503
 
-        if not session:
-            return "<h1>Session expired</h1><p>Please run /verify again.</p>", 400
+        session = firebase_get(f'oauth_states/{state}')
+        logger.info(f'🔎 OAuth state lookup in Firebase: found={bool(session)}')
+        if not isinstance(session, dict):
+            return "<h1>Session expired</h1><p>The verification session was not found in Firebase. Please run /verify again.</p>", 400
 
         created = session.get('timestamp') if isinstance(session, dict) else None
         if created:
@@ -137,8 +164,8 @@ def oauth_callback():
                 'code': code,
                 'redirect_uri': os.getenv('REDIRECT_URI', '').strip()
             }
-            async with aiohttp.ClientSession() as session:
-                async with session.post('https://discord.com/api/oauth2/token', data=data) as resp:
+            async with aiohttp.ClientSession() as http_session:
+                async with http_session.post('https://discord.com/api/oauth2/token', data=data) as resp:
                     if resp.status == 200:
                         return await resp.json()
                     return None
@@ -164,8 +191,8 @@ def oauth_callback():
         
         async def get_user_data():
             headers = {'Authorization': f'Bearer {access_token}'}
-            async with aiohttp.ClientSession() as session:
-                async with session.get('https://discord.com/api/users/@me', headers=headers) as resp:
+            async with aiohttp.ClientSession() as http_session:
+                async with http_session.get('https://discord.com/api/users/@me', headers=headers) as resp:
                     if resp.status == 200:
                         return await resp.json()
                     return None
@@ -196,10 +223,35 @@ def oauth_callback():
                     'verified_at': datetime.now().isoformat(),
                     'verified': True
                 })
-                logger.info(f"✅ Stored in Firebase: {username}")
+                rtdb_client.child(f'all_users/{discord_id}').set({
+                    'discord_id': discord_id, 'username': username, 'email': email,
+                    'avatar': avatar_url, 'verified': True,
+                    'verified_guild_id': guild_id, 'updated_at': datetime.utcnow().isoformat()
+                })
+                logger.info(f"✅ Stored verification + user index in Firebase: {username}")
             except Exception as e:
                 logger.error(f"❌ Firebase storage failed: {e}")
-        
+                return "<h1>Verification storage failed</h1><p>Your verification was not completed. Please try again.</p>", 500
+
+        bot_api_url = (os.getenv('BOT_API_URL') or '').rstrip('/')
+        control_key = os.getenv('CONTROL_API_KEY') or ''
+        if bot_api_url and control_key:
+            try:
+                async def notify_bot():
+                    payload = {'user_id': str(discord_id), 'guild_id': str(guild_id), 'email': email}
+                    headers = {'X-API-Key': control_key, 'Content-Type': 'application/json'}
+                    async with aiohttp.ClientSession() as http_session:
+                        async with http_session.post(f'{bot_api_url}/api/v1/verify', json=payload, headers=headers, timeout=15) as resp:
+                            return resp.status, await resp.text()
+                loop = asyncio.new_event_loop(); asyncio.set_event_loop(loop)
+                bot_status, bot_text = loop.run_until_complete(notify_bot()); loop.close()
+                if bot_status >= 400:
+                    logger.error(f'❌ Bot verification API failed ({bot_status}): {bot_text[:300]}')
+                    return "<h1>Discord verification failed</h1><p>The identity was saved, but the bot could not finish server verification.</p>", 502
+            except Exception as e:
+                logger.error(f'❌ Could not contact Railway bot: {e}')
+                return "<h1>Discord verification unavailable</h1><p>Please run /verify again.</p>", 502
+
         return f"""
         <!DOCTYPE html>
         <html>
@@ -272,7 +324,9 @@ def health():
         'status': 'online',
         'firebase': '✅ Connected' if rtdb_client else '❌ Not connected',
         'timestamp': datetime.now().isoformat(),
-        'redirect_uri_configured': bool(os.getenv('REDIRECT_URI'))
+        'redirect_uri_configured': bool(os.getenv('REDIRECT_URI')),
+        'firebase_url_configured': bool(os.getenv('FIREBASE_URL')),
+        'bot_api_configured': bool(os.getenv('BOT_API_URL') and os.getenv('CONTROL_API_KEY'))
     })
 
 @app.route('/api/users')
