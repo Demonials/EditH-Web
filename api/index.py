@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 logging.basicConfig(level=logging.INFO)
 logger=logging.getLogger('anion-web')
 BASE=Path(__file__).resolve().parent
-app=Flask(__name__, template_folder=str(BASE/'templates'), static_folder=str(BASE/'static'))
+app=Flask(__name__, template_folder=str(BASE/'templates'), static_folder=str(BASE/'static'), static_url_path='/static')
 app.secret_key=os.getenv('WEB_SESSION_SECRET') or os.getenv('CLIENT_SECRET') or hashlib.sha256(os.getenv('FIREBASE_URL','anion').encode()).hexdigest()
 app.config.update(SESSION_COOKIE_HTTPONLY=True,SESSION_COOKIE_SECURE=True,SESSION_COOKIE_SAMESITE='Lax',PERMANENT_SESSION_LIFETIME=86400)
 
@@ -27,6 +27,10 @@ CONTROL_API_KEY=os.getenv('CONTROL_API_KEY','')
 SUPER_USER=os.getenv('SUPERADMIN_USERNAME','')
 SUPER_PASS=os.getenv('SUPERADMIN_PASSWORD','')
 SUPER_ID=str(os.getenv('SUPER_ADMIN_ID',''))
+
+@app.route('/static/<path:filename>')
+def static_files(filename):
+    return send_from_directory(str(BASE/'static'), filename)
 
 def fb_get(path):
     return firebase_ref.child(path).get() if firebase_ref else None
