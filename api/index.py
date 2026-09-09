@@ -1,4 +1,4 @@
-from flask import Flask, request, redirect, jsonify, send_from_directory
+from flask import Flask, request, redirect, jsonify, send_from_directory, render_template, session
 import os
 import json
 import secrets
@@ -11,7 +11,10 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
-app.secret_key = os.getenv('FLASK_SECRET_KEY') or 'dev-only-change-me'
+app.secret_key = os.getenv('FLASK_SECRET_KEY') or secrets.token_hex(32)
+app.config['SESSION_COOKIE_SECURE'] = True
+app.config['SESSION_COOKIE_HTTPONLY'] = True
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 
 # ============ FIREBASE SETUP ============
 try:
@@ -79,43 +82,105 @@ def favicon():
 
 @app.route('/')
 def home():
-    return """
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <title>EDITH Bot - Verification</title>
-        <style>
-            * { margin: 0; padding: 0; box-sizing: border-box; }
-            body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #1a1a2e; color: white; display: flex; justify-content: center; align-items: center; min-height: 100vh; padding: 20px; }
-            .container { background: #2d2d44; padding: 50px; border-radius: 20px; text-align: center; max-width: 500px; width: 100%; box-shadow: 0 20px 60px rgba(0,0,0,0.5); border: 1px solid #3d3d5c; }
-            .logo { font-size: 80px; margin-bottom: 20px; }
-            h1 { color: #ffffff; font-size: 32px; margin-bottom: 10px; }
-            .subtitle { color: #b5b5c4; font-size: 16px; margin-bottom: 30px; }
-            .status { background: #1e1e32; padding: 20px; border-radius: 12px; margin: 20px 0; }
-            .status .label { color: #6d6d8a; font-size: 13px; }
-            .status .value { color: #4caf50; font-weight: 600; font-size: 16px; }
-            .footer { color: #4d4d6a; font-size: 12px; margin-top: 30px; border-top: 1px solid #2d2d44; padding-top: 20px; }
-            .badge { display: inline-block; background: #4caf50; color: white; padding: 4px 12px; border-radius: 20px; font-size: 11px; font-weight: 600; }
-        </style>
-    </head>
-    <body>
-        <div class="container">
-            <div class="logo">🤖</div>
-            <h1>EDITH Bot</h1>
-            <p class="subtitle">Ultimate Server Management Bot</p>
-            <div class="status">
-                <div style="margin-bottom: 10px;"><span class="label">Status</span></div>
-                <div><span class="value">✅ Online & Ready</span></div>
-                <div style="margin-top: 10px;"><span class="badge">Verification System Active</span></div>
-            </div>
-            <p style="color: #b5b5c4; font-size: 14px; margin: 20px 0;">
-                Use <code style="background: #1a1a2e; padding: 4px 8px; border-radius: 4px; color: #5865f2;">/verify</code> in Discord to start verification.
-            </p>
-            <p class="footer">EDITH Authentication System v2.0 • Built with ❤️</p>
-        </div>
-    </body>
-    </html>
-    """
+    return render_template('index.html', config_client_id=os.getenv('CLIENT_ID',''))
+
+@app.route('/login', methods=['GET','POST'])
+def login():
+    error = None
+    if request.method == 'POST':
+        username = (request.form.get('username') or '').strip()
+        password = request.form.get('password') or ''
+        # Superadmin is intentionally configured only through environment variables.
+        if username == os.getenv('SUPERADMIN_USERNAME','') and password == os.getenv('SUPERADMIN_PASSWORD','') and username:
+            session['user_id'] = str(os.getenv('SUPER_ADMIN_ID','superadmin'))
+            session['role'] = 'superadmin'
+            return redirect('/superadmin')
+        creds = firebase_get('credentials_by_username/' + username)
+        uid = creds.get('user_id') if isinstance(creds, dict) else None
+        if uid:
+            record = firebase_get('credentials/' + str(uid))
+            if isinstance(record, dict) and secrets.compare_digest(str(record.get('password','')), password):
+                session['user_id'] = str(uid)
+                session['role'] = str(record.get('role','member'))
+                return redirect('/moderator' if session['role'] == 'moderator' else '/user')
+        error = 'Invalid username or password.'
+    return render_template('login.html', error=error)
+
+@app.route('/logout')
+def logout():
+    session.clear()
+    return redirect('/login')
+
+def _login_required():
+    return bool(session.get('user_id'))
+
+def _bot_request(path, method='GET', payload=None):
+    base=(os.getenv('BOT_API_URL') or '').rstrip('/')
+    key=os.getenv('CONTROL_API_KEY') or ''
+    if not base or not key: return None, 503
+    async def run():
+        headers={'X-API-Key':key,'X-Actor-ID':str(session.get('user_id','')),'Content-Type':'application/json'}
+        async with aiohttp.ClientSession() as hs:
+            url=base+path
+            if method=='POST':
+                async with hs.post(url,json=payload or {},headers=headers,timeout=20) as r: return r.status, await r.json(content_type=None)
+            async with hs.get(url,headers=headers,timeout=20) as r: return r.status, await r.json(content_type=None)
+    loop=asyncio.new_event_loop(); asyncio.set_event_loop(loop)
+    try: return loop.run_until_complete(run())
+    finally: loop.close()
+
+@app.route('/user')
+def user_page():
+    if not _login_required(): return redirect('/login')
+    return render_template('user.html')
+
+@app.route('/moderator')
+def moderator_page():
+    if not _login_required() or session.get('role') not in ('moderator','superadmin'): return redirect('/login')
+    return render_template('moderator.html')
+
+@app.route('/superadmin')
+def superadmin_page():
+    if not _login_required() or session.get('role') != 'superadmin': return redirect('/login')
+    return render_template('superadmin.html')
+
+@app.route('/api/me')
+def api_me():
+    if not _login_required(): return jsonify({'error':'unauthorized'}),401
+    uid=str(session['user_id']); creds=firebase_get('credentials/'+uid); profile=firebase_get('profiles/'+uid)
+    return jsonify({'ok':True,'user':{'id':uid,'username':profile.get('username') if isinstance(profile,dict) else None,'profile':profile or {},'credentials':creds or {},'role':session.get('role','member')}})
+
+@app.route('/api/guilds')
+def api_guilds():
+    if not _login_required(): return jsonify({'error':'unauthorized'}),401
+    status,data=_bot_request('/api/v1/user/'+str(session['user_id'])+'/guilds')
+    return jsonify(data or {'guilds':[]}), status
+
+@app.route('/api/superadmin/guilds')
+def api_superadmin_guilds():
+    if session.get('role')!='superadmin': return jsonify({'error':'forbidden'}),403
+    status,data=_bot_request('/api/v1/superadmin/guilds'); return jsonify(data or {}),status
+
+@app.route('/api/guild/<guild_id>')
+def api_guild_proxy(guild_id):
+    if not _login_required(): return jsonify({'error':'unauthorized'}),401
+    status,data=_bot_request('/api/v1/guild/'+guild_id+'?actor_id='+str(session['user_id'])+'&full=1'); return jsonify(data or {}),status
+
+@app.route('/api/action/<action>', methods=['POST'])
+def api_action_proxy(action):
+    if not _login_required(): return jsonify({'error':'unauthorized'}),401
+    payload=request.get_json(silent=True) or {}; payload['action']=action
+    status,data=_bot_request('/api/v1/action', 'POST', payload); return jsonify(data or {}),status
+
+@app.route('/api/warnings/<guild_id>/<user_id>')
+def api_warnings(guild_id,user_id):
+    if not _login_required(): return jsonify({'error':'unauthorized'}),401
+    status,data=_bot_request('/api/v1/warnings/'+guild_id+'/'+user_id); return jsonify(data or {}),status
+
+@app.route('/api/public/stats')
+def public_stats():
+    status,data=_bot_request('/api/v1/stats')
+    return jsonify(data or {'ok':False,'stats':{}}),status
 
 @app.route('/callback')
 def oauth_callback():
@@ -182,13 +247,6 @@ def oauth_callback():
         if not access_token:
             return "<h1>Token exchange failed</h1><p>Discord did not return an access token.</p>", 400
 
-        # Consume the state only after Discord accepted the OAuth code.
-        if state and rtdb_client:
-            try:
-                rtdb_client.child(f'oauth_states/{state}').delete()
-            except Exception as e:
-                logger.warning(f'⚠️ Could not delete OAuth state: {e}')
-        
         async def get_user_data():
             headers = {'Authorization': f'Bearer {access_token}'}
             async with aiohttp.ClientSession() as http_session:
@@ -246,11 +304,24 @@ def oauth_callback():
                 loop = asyncio.new_event_loop(); asyncio.set_event_loop(loop)
                 bot_status, bot_text = loop.run_until_complete(notify_bot()); loop.close()
                 if bot_status >= 400:
-                    logger.error(f'❌ Bot verification API failed ({bot_status}): {bot_text[:300]}')
-                    return "<h1>Discord verification failed</h1><p>The identity was saved, but the bot could not finish server verification.</p>", 502
+                    logger.error(f'❌ Bot verification API failed ({bot_status}): {bot_text[:500]}')
+                    return f"<h1>Discord verification failed</h1><p>Railway returned HTTP {bot_status}.</p><pre>{bot_text[:1200]}</pre><p>Please fix the Railway bot permission/hierarchy and run /verify again.</p>", 502
+                try:
+                    bot_result = json.loads(bot_text) if isinstance(bot_text, str) else bot_text
+                except Exception:
+                    bot_result = {}
+                if isinstance(bot_result, dict) and not bot_result.get('role_assigned', True):
+                    return "<h1>Role assignment failed</h1><p>The bot responded without confirming the Verified role. Check that the bot's highest role is above <b>✅ Verified</b>.</p>", 502
             except Exception as e:
                 logger.error(f'❌ Could not contact Railway bot: {e}')
                 return "<h1>Discord verification unavailable</h1><p>Please run /verify again.</p>", 502
+
+        # Only consume the OAuth state after the entire verification pipeline succeeded.
+        if state and rtdb_client:
+            try:
+                rtdb_client.child(f'oauth_states/{state}').delete()
+            except Exception as e:
+                logger.warning(f'⚠️ Could not delete OAuth state after success: {e}')
 
         return f"""
         <!DOCTYPE html>
