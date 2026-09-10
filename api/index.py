@@ -318,7 +318,7 @@ def oauth_callback():
                         f'{bot_api_url}/api/v1/verify',
                         json=payload,
                         headers=headers,
-                        timeout=15
+                        timeout=aiohttp.ClientTimeout(total=45)
                     ) as resp:
                         return resp.status, await resp.text()
 
@@ -356,9 +356,56 @@ def oauth_callback():
                     "Check Manage Roles and role hierarchy.</p>",
                     502
                 )
+        except asyncio.TimeoutError:
+            logger.exception('❌ Railway verification request timed out')
+            bot_result = {
+                'ok': False,
+                'error': 'railway_timeout',
+                'detail': 'Vercel connected to the verification flow, but Railway did not respond within 45 seconds.',
+                'steps': [
+                    {'key': 'railway_request', 'label': 'Railway verification request', 'ok': False,
+                     'detail': 'Request timed out after 45 seconds. Check Railway deployment/logs.'}
+                ]
+            }
+        except aiohttp.ClientError as e:
+            logger.exception(f'❌ Could not contact Railway bot: {e}')
+            bot_result = {
+                'ok': False,
+                'error': 'railway_connection_failed',
+                'detail': f'Vercel could not reach BOT_API_URL: {type(e).__name__}: {str(e)[:500]}',
+                'steps': [
+                    {'key': 'railway_request', 'label': 'Railway verification request', 'ok': False,
+                     'detail': f'{type(e).__name__}: {str(e)[:500]}'}
+                ]
+            }
         except Exception as e:
             logger.exception(f'❌ Could not contact Railway bot: {e}')
-            return "<h1>Discord verification unavailable</h1><p>Please run /verify again.</p>", 502
+            bot_result = {
+                'ok': False,
+                'error': 'railway_request_failed',
+                'detail': f'{type(e).__name__}: {str(e)[:500]}',
+                'steps': [
+                    {'key': 'railway_request', 'label': 'Railway verification request', 'ok': False,
+                     'detail': f'{type(e).__name__}: {str(e)[:500]}'}
+                ]
+            }
+
+        # Never hide the actual Railway connection failure behind a generic
+        # "run /verify again" page. Render the real stage and error details.
+        if not bot_result.get('ok'):
+            steps = bot_result.get('steps') if isinstance(bot_result, dict) else []
+            return render_template(
+                'oauth_result.html',
+                ok=False,
+                title='Discord Verification Failed',
+                message=bot_result.get('detail') or bot_result.get('error') or 'Railway verification failed.',
+                username=username,
+                discord_id=discord_id,
+                email=email,
+                avatar_url=avatar_url,
+                steps=steps,
+                bot_result=bot_result
+            ), 502
 
         # Only consume the OAuth state after the entire verification pipeline succeeded.
         if state and rtdb_client:
