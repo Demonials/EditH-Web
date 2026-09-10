@@ -303,37 +303,62 @@ def oauth_callback():
             logger.error('❌ Railway verification API is not configured | BOT_API_URL or CONTROL_API_KEY missing')
             return "<h1>Verification unavailable</h1><p>The Railway bot connection is not configured. Set BOT_API_URL and CONTROL_API_KEY on Vercel.</p>", 503
         try:
-                async def notify_bot():
-                    payload = {
-                        'user_id': str(discord_id),
-                        'guild_id': str(guild_id),
-                        'username': username,
-                        'email': email,
-                        'avatar': avatar_url,
-                        'global_name': user_data.get('global_name') or username
-                    }
-                    headers = {'X-API-Key': control_key, 'Content-Type': 'application/json'}
-                    async with aiohttp.ClientSession() as http_session:
-                        async with http_session.post(f'{bot_api_url}/api/v1/verify', json=payload, headers=headers, timeout=15) as resp:
-                            return resp.status, await resp.text()
-                loop = asyncio.new_event_loop(); asyncio.set_event_loop(loop)
-                bot_status, bot_text = loop.run_until_complete(notify_bot()); loop.close()
-                try:
-                    bot_result = json.loads(bot_text) if isinstance(bot_text, str) else bot_text
-                except Exception:
-                    bot_result = {}
-                if bot_status >= 400 or not isinstance(bot_result, dict) or not bot_result.get('ok'):
-                    logger.error(f'❌ Bot verification API failed | HTTP={bot_status} | response={bot_text[:1000]}')
-                    detail = bot_result.get('detail') or bot_result.get('error') if isinstance(bot_result, dict) else bot_text
-                    return f"<h1>Discord verification failed</h1><p>Railway returned HTTP {bot_status}.</p><pre>{detail}</pre><p>Check the Railway logs for the exact failure.</p>", 502
+            async def notify_bot():
+                payload = {
+                    'user_id': str(discord_id),
+                    'guild_id': str(guild_id),
+                    'username': username,
+                    'email': email,
+                    'avatar': avatar_url,
+                    'global_name': user_data.get('global_name') or username
+                }
+                headers = {'X-API-Key': control_key, 'Content-Type': 'application/json'}
+                async with aiohttp.ClientSession() as http_session:
+                    async with http_session.post(
+                        f'{bot_api_url}/api/v1/verify',
+                        json=payload,
+                        headers=headers,
+                        timeout=15
+                    ) as resp:
+                        return resp.status, await resp.text()
 
-                # Show the real Railway result instead of displaying a fake success page.
-                logger.info(f"✅ Railway verification result: {json.dumps(bot_result, default=str)}")
-                if not bot_result.get('role_assigned'):
-                    return "<h1>Role assignment failed</h1><p>Railway did not confirm that ✅ Verified was assigned. Check Manage Roles and role hierarchy.</p>", 502
-            except Exception as e:
-                logger.error(f'❌ Could not contact Railway bot: {e}')
-                return "<h1>Discord verification unavailable</h1><p>Please run /verify again.</p>", 502
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                bot_status, bot_text = loop.run_until_complete(notify_bot())
+            finally:
+                loop.close()
+
+            try:
+                bot_result = json.loads(bot_text) if isinstance(bot_text, str) else bot_text
+            except Exception:
+                bot_result = {'ok': False, 'error': 'invalid_railway_response', 'raw_response': str(bot_text)[:1000]}
+
+            if bot_status >= 400 or not isinstance(bot_result, dict) or not bot_result.get('ok'):
+                logger.error(
+                    f'❌ Bot verification API failed | HTTP={bot_status} | response={str(bot_text)[:1000]}'
+                )
+                detail = (bot_result.get('detail') or bot_result.get('error')) if isinstance(bot_result, dict) else str(bot_text)
+                return (
+                    f"<h1>Discord verification failed</h1>"
+                    f"<p>Railway returned HTTP {bot_status}.</p>"
+                    f"<pre>{detail}</pre>"
+                    f"<p>Check the Railway logs for the exact failure.</p>",
+                    502
+                )
+
+            logger.info(f"✅ Railway verification result: {json.dumps(bot_result, default=str)}")
+
+            if not bot_result.get('role_assigned'):
+                return (
+                    "<h1>Role assignment failed</h1>"
+                    "<p>Railway did not confirm that ✅ Verified was assigned. "
+                    "Check Manage Roles and role hierarchy.</p>",
+                    502
+                )
+        except Exception as e:
+            logger.exception(f'❌ Could not contact Railway bot: {e}')
+            return "<h1>Discord verification unavailable</h1><p>Please run /verify again.</p>", 502
 
         # Only consume the OAuth state after the entire verification pipeline succeeded.
         if state and rtdb_client:
