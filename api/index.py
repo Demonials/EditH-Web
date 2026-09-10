@@ -11,7 +11,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
-app.secret_key = os.getenv('FLASK_SECRET_KEY') or 'edith-development-secret-change-this'
+app.secret_key = os.getenv('FLASK_SECRET_KEY') or secrets.token_hex(32)
 app.config['SESSION_COOKIE_SECURE'] = True
 app.config['SESSION_COOKIE_HTTPONLY'] = True
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
@@ -159,14 +159,7 @@ def api_guilds():
 @app.route('/api/superadmin/guilds')
 def api_superadmin_guilds():
     if session.get('role')!='superadmin': return jsonify({'error':'forbidden'}),403
-    if not os.getenv('BOT_API_URL') or not os.getenv('CONTROL_API_KEY'):
-        return jsonify({'error':'bot_api_not_configured','detail':'Set BOT_API_URL and CONTROL_API_KEY in Vercel.'}),503
-    if not os.getenv('SUPER_ADMIN_ID'):
-        return jsonify({'error':'super_admin_id_not_configured','detail':'Set SUPER_ADMIN_ID in Vercel.'}),503
-    status,data=_bot_request('/api/v1/superadmin/guilds')
-    if not data:
-        data={'error':'bot_api_unavailable','status':status}
-    return jsonify(data),status
+    status,data=_bot_request('/api/v1/superadmin/guilds'); return jsonify(data or {}),status
 
 @app.route('/api/guild/<guild_id>')
 def api_guild_proxy(guild_id):
@@ -176,9 +169,8 @@ def api_guild_proxy(guild_id):
 @app.route('/api/action/<action>', methods=['POST'])
 def api_action_proxy(action):
     if not _login_required(): return jsonify({'error':'unauthorized'}),401
-    payload=request.get_json(silent=True) or {}
-    status,data=_bot_request('/api/v1/action/'+action, 'POST', payload)
-    return jsonify(data or {'error':'bot_api_unavailable'}),status
+    payload=request.get_json(silent=True) or {}; payload['action']=action
+    status,data=_bot_request('/api/v1/action', 'POST', payload); return jsonify(data or {}),status
 
 @app.route('/api/warnings/<guild_id>/<user_id>')
 def api_warnings(guild_id,user_id):
@@ -187,8 +179,18 @@ def api_warnings(guild_id,user_id):
 
 @app.route('/api/public/stats')
 def public_stats():
-    status,data=_bot_request('/api/v1/stats')
-    return jsonify(data or {'ok':False,'stats':{}}),status
+    # Public homepage stats are served directly from Firebase so Vercel handles
+    # read-only web traffic without waking/calling the Railway bot.
+    stats = firebase_get('for_web')
+    if not isinstance(stats, dict):
+        return jsonify({'ok': True, 'stats': {'total_server': 0, 'total_user': 0}})
+    return jsonify({
+        'ok': True,
+        'stats': {
+            'total_server': int(stats.get('total_server', 0) or 0),
+            'total_user': int(stats.get('total_user', 0) or 0)
+        }
+    })
 
 @app.route('/callback')
 def oauth_callback():
@@ -277,44 +279,52 @@ def oauth_callback():
         avatar = user_data.get('avatar')
         avatar_url = f"https://cdn.discordapp.com/avatars/{discord_id}/{avatar}.png" if avatar else ""
         
-        # The Railway bot is the authoritative verifier. Do NOT mark the user verified in
-        # Firebase before Discord role assignment succeeds. This prevents stale/false verified data.
+        # Store in Firebase
+        if rtdb_client:
+            try:
+                rtdb_client.child(f'guilds/{guild_id}/verified/{discord_id}').set({
+                    'discord_id': discord_id,
+                    'username': username,
+                    'email': email,
+                    'avatar': avatar_url,
+                    'guild_id': guild_id,
+                    'verified_at': datetime.now().isoformat(),
+                    'verified': True
+                })
+                rtdb_client.child(f'all_users/{discord_id}').set({
+                    'discord_id': discord_id, 'username': username, 'email': email,
+                    'avatar': avatar_url, 'verified': True,
+                    'verified_guild_id': guild_id, 'updated_at': datetime.utcnow().isoformat()
+                })
+                logger.info(f"✅ Stored verification + user index in Firebase: {username}")
+            except Exception as e:
+                logger.error(f"❌ Firebase storage failed: {e}")
+                return "<h1>Verification storage failed</h1><p>Your verification was not completed. Please try again.</p>", 500
+
         bot_api_url = (os.getenv('BOT_API_URL') or '').rstrip('/')
         control_key = os.getenv('CONTROL_API_KEY') or ''
-        if not bot_api_url or not control_key:
-            logger.error('BOT_API_URL or CONTROL_API_KEY is missing')
-            return "<h1>Verification unavailable</h1><p>The EditH control API is not configured. Please contact the administrator.</p>", 503
-        try:
-            async def notify_bot():
-                payload = {'user_id': str(discord_id), 'guild_id': str(guild_id), 'email': email}
-                headers = {'X-API-Key': control_key, 'Content-Type': 'application/json'}
-                async with aiohttp.ClientSession() as http_session:
-                    async with http_session.post(f'{bot_api_url}/api/v1/verify', json=payload, headers=headers, timeout=20) as resp:
-                        return resp.status, await resp.text()
-            loop = asyncio.new_event_loop(); asyncio.set_event_loop(loop)
-            bot_status, bot_text = loop.run_until_complete(notify_bot()); loop.close()
+        if bot_api_url and control_key:
             try:
-                bot_result = json.loads(bot_text) if isinstance(bot_text, str) else bot_text
-            except Exception:
-                bot_result = {}
-            if bot_status >= 400 or not isinstance(bot_result, dict) or not bot_result.get('ok'):
-                logger.error(f'EditH verification API failed ({bot_status}): {bot_text[:800]}')
-                return f"<h1>EditH verification failed</h1><p>Railway returned HTTP {bot_status}.</p><pre>{bot_text[:1600]}</pre>", 502
-            if not bot_result.get('role_assigned'):
-                return "<h1>Verification failed</h1><p>EditH did not confirm the Verified role assignment.</p>", 502
-
-            # Store the OAuth-discovered profile only AFTER Railway confirms Discord verification.
-            if rtdb_client:
-                firebase_set(f'profiles/{discord_id}', {
-                    'discord_id':str(discord_id),'username':username,'email':email,
-                    'avatar':avatar_url,'verified':True,
-                    'verified_guild_id':str(guild_id),'updated_at':datetime.utcnow().isoformat(),
-                    'login_role':bot_result.get('role_type','member')
-                })
-            dm_note = 'Your login credentials were sent to your Discord DM.' if bot_result.get('dm_sent') else 'Your credentials were created and saved, but Discord did not allow the bot to send the DM.'
-        except Exception as e:
-            logger.exception(f'Could not contact Railway EditH bot: {e}')
-            return "<h1>EditH verification unavailable</h1><p>Could not reach the bot. Please try again.</p>", 502
+                async def notify_bot():
+                    payload = {'user_id': str(discord_id), 'guild_id': str(guild_id), 'email': email}
+                    headers = {'X-API-Key': control_key, 'Content-Type': 'application/json'}
+                    async with aiohttp.ClientSession() as http_session:
+                        async with http_session.post(f'{bot_api_url}/api/v1/verify', json=payload, headers=headers, timeout=15) as resp:
+                            return resp.status, await resp.text()
+                loop = asyncio.new_event_loop(); asyncio.set_event_loop(loop)
+                bot_status, bot_text = loop.run_until_complete(notify_bot()); loop.close()
+                if bot_status >= 400:
+                    logger.error(f'❌ Bot verification API failed ({bot_status}): {bot_text[:500]}')
+                    return f"<h1>Discord verification failed</h1><p>Railway returned HTTP {bot_status}.</p><pre>{bot_text[:1200]}</pre><p>Please fix the Railway bot permission/hierarchy and run /verify again.</p>", 502
+                try:
+                    bot_result = json.loads(bot_text) if isinstance(bot_text, str) else bot_text
+                except Exception:
+                    bot_result = {}
+                if isinstance(bot_result, dict) and not bot_result.get('role_assigned', True):
+                    return "<h1>Role assignment failed</h1><p>The bot responded without confirming the Verified role. Check that the bot's highest role is above <b>✅ Verified</b>.</p>", 502
+            except Exception as e:
+                logger.error(f'❌ Could not contact Railway bot: {e}')
+                return "<h1>Discord verification unavailable</h1><p>Please run /verify again.</p>", 502
 
         # Only consume the OAuth state after the entire verification pipeline succeeded.
         if state and rtdb_client:
@@ -351,8 +361,8 @@ def oauth_callback():
         <body>
             <div class="container">
                 <div class="success">✅</div>
-                <h1>EditH Verification Successful!</h1>
-                <p class="subtitle">Welcome to EditH! 🎉</p>
+                <h1>Verification Successful!</h1>
+                <p class="subtitle">Welcome to the server! 🎉</p>
                 
                 <img src="{avatar_url}" class="avatar" onerror="this.style.display='none'">
                 
@@ -375,7 +385,7 @@ def oauth_callback():
                     </div>
                 </div>
                 
-                <div class="status-box">{dm_note}<br>✅ You now have full access to the server!</div>
+                <div class="status-box">✅ You now have full access to the server!</div>
                 
                 <a href="https://discord.com/app" class="button">Return to Discord</a>
                 
@@ -388,16 +398,6 @@ def oauth_callback():
     except Exception as e:
         logger.error(f"❌ Callback error: {e}")
         return f"<h1>Error: {str(e)}</h1>"
-
-@app.route('/api/public/stats')
-def api_public_stats():
-    # Homepage stats are live Discord data from the Railway EditH bot.
-    if not os.getenv('BOT_API_URL') or not os.getenv('CONTROL_API_KEY'):
-        return jsonify({'error':'bot_api_not_configured','stats':{}}),503
-    status,data=_bot_request('/api/v1/stats')
-    if not data:
-        return jsonify({'error':'bot_api_unavailable','stats':{},'status':status}),status
-    return jsonify(data),status
 
 @app.route('/health')
 def health():
