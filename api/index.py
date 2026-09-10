@@ -466,6 +466,7 @@ def api_users():
 
 # Vercel needs this
 app.debug = False
+handler = app
 
 if __name__ == "__main__":
     app.run(host='0.0.0.0', port=8080)
