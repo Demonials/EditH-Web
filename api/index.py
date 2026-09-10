@@ -287,8 +287,22 @@ def oauth_callback():
 
         bot_api_url = (os.getenv('BOT_API_URL') or '').rstrip('/')
         control_key = os.getenv('CONTROL_API_KEY') or ''
-        if bot_api_url and control_key:
-            try:
+        # Always initialize this before the conditional so the success template
+        # can never reference an unbound local variable.
+        bot_result = {
+            'ok': False,
+            'role_assigned': False,
+            'credentials_created': False,
+            'firebase_saved': False,
+            'dm_sent': False,
+            'collection_channel_sent': False,
+            'log_sent': False,
+            'error': 'bot_api_not_configured'
+        }
+        if not bot_api_url or not control_key:
+            logger.error('❌ Railway verification API is not configured | BOT_API_URL or CONTROL_API_KEY missing')
+            return "<h1>Verification unavailable</h1><p>The Railway bot connection is not configured. Set BOT_API_URL and CONTROL_API_KEY on Vercel.</p>", 503
+        try:
                 async def notify_bot():
                     payload = {
                         'user_id': str(discord_id),
