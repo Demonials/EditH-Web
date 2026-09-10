@@ -1,10 +1,432 @@
-<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Anion — The Discord Bot</title><style>
-:root{--bg:#03070c;--panel:#071019;--panel2:#0a131d;--red:#ff2038;--red2:#ff5262;--text:#f4f7fb;--muted:#8f9baa;--line:rgba(255,255,255,.1);--shadow:0 25px 90px rgba(0,0,0,.45)}*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:var(--bg);color:var(--text);font-family:Inter,system-ui,sans-serif}a{color:inherit;text-decoration:none}button,input,select,textarea{font:inherit}.container{width:min(1160px,calc(100% - 36px));margin:auto}.nav{position:sticky;top:0;z-index:50;height:72px;background:rgba(2,6,10,.86);backdrop-filter:blur(18px);border-bottom:1px solid var(--line)}.navin{height:100%;display:flex;align-items:center;gap:34px}.brand{display:flex;align-items:center}.brand img{width:210px;height:58px;object-fit:contain;object-position:left center}.brand span{color:var(--red)}.brand small{font-size:9px;color:#c0c7d0;letter-spacing:.2em;margin-left:8px}.links{display:flex;gap:30px;margin:auto;color:#c3c9d1;font-size:14px}.links a:hover{color:#fff}.btn{display:inline-flex;align-items:center;justify-content:center;gap:10px;padding:13px 20px;border:1px solid var(--line);border-radius:11px;background:#0b121a;color:#fff;cursor:pointer;transition:.22s}.btn:hover{transform:translateY(-2px);border-color:rgba(255,32,56,.7)}.btn-red{background:linear-gradient(135deg,#ff3147,#e70d27);border-color:#ff3147;box-shadow:0 10px 30px rgba(255,32,56,.22)}.hero{min-height:690px;position:relative;overflow:hidden;background:linear-gradient(90deg,#03070c 0%,rgba(3,7,12,.86) 40%,rgba(3,7,12,.2) 75%),url('/static/planet.jpg') center/cover}.hero:after{content:"";position:absolute;inset:auto 0 0;height:220px;background:linear-gradient(transparent,var(--bg))}.hero .container{position:relative;z-index:2;padding-top:150px}.eyebrow{color:var(--red);font-weight:800;letter-spacing:.2em;font-size:11px}.hero h1{font-size:clamp(48px,7vw,86px);line-height:.95;margin:18px 0 10px;letter-spacing:.02em}.hero h1 span{color:var(--red)}.hero p{max-width:560px;color:#b4bdc8;line-height:1.75;font-size:16px}.actions{display:flex;gap:12px;margin:28px 0}.stats{display:flex;gap:48px;margin-top:40px}.stat b{display:block;font-size:28px}.stat span{color:#8f9baa;font-size:12px}.section{padding:90px 0}.sectionhead{display:flex;justify-content:space-between;gap:30px;align-items:end;margin-bottom:34px}.kicker{color:var(--red);font-size:10px;font-weight:900;letter-spacing:.22em}.section h2{font-size:36px;line-height:1.05;margin:9px 0}.muted{color:var(--muted);line-height:1.7}.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}.card{background:linear-gradient(145deg,rgba(255,255,255,.045),rgba(255,255,255,.018));border:1px solid var(--line);border-radius:16px;padding:25px;transition:.25s}.card:hover{transform:translateY(-5px);border-color:rgba(255,32,56,.55);box-shadow:0 20px 55px rgba(0,0,0,.25)}.icon{width:44px;height:44px;border-radius:12px;display:grid;place-items:center;background:rgba(255,32,56,.1);color:var(--red);font-size:20px;margin-bottom:18px}.feature h3{margin:0 0 9px}.feature p{color:var(--muted);line-height:1.6;font-size:14px}.why{display:grid;grid-template-columns:1fr 1fr;min-height:420px;overflow:hidden;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}.whyimg{background:url('/static/why.jpg') center/cover;min-height:420px}.whycopy{padding:65px}.commandbox{border:1px solid rgba(255,32,56,.45);border-radius:16px;overflow:hidden;background:#060c12;box-shadow:0 0 40px rgba(255,32,56,.1)}.command{display:flex;gap:25px;padding:16px 20px;border-bottom:1px solid var(--line)}.command:last-child{border:0}.command code{color:#ff5262}.command span{color:#8793a0;font-size:13px}.footer{border-top:1px solid var(--line);padding:30px 0;color:#7f8a97}.loginwrap{min-height:100vh;display:grid;place-items:center;padding:25px;background:radial-gradient(circle at 50% 20%,rgba(255,32,56,.12),transparent 40%),#020508}.terminal{width:min(470px,100%);background:#050a0f;border:1px solid rgba(255,32,56,.4);box-shadow:0 30px 100px rgba(0,0,0,.55);border-radius:16px;overflow:hidden}.terminalbar{padding:13px 16px;border-bottom:1px solid var(--line);font:12px ui-monospace,monospace;color:#8f9baa}.terminalbody{padding:30px}.terminal h1{font-size:27px;margin:0 0 8px}.terminal p{color:#7f8a97;font-size:13px;line-height:1.6}.field{margin:17px 0}.field label{display:block;font-size:11px;color:#9ba5b1;margin-bottom:8px}.field input{width:100%;padding:13px 14px;border:1px solid #1e2a36;background:#080e14;color:#fff;border-radius:10px;outline:none}.field input:focus{border-color:var(--red);box-shadow:0 0 0 3px rgba(255,32,56,.08)}.error{padding:11px 13px;border:1px solid rgba(255,32,56,.4);background:rgba(255,32,56,.08);border-radius:9px;color:#ff8793;font-size:12px}.dash{min-height:100vh;background:radial-gradient(circle at 80% 0%,rgba(255,32,56,.08),transparent 35%),#03070c}.dashnav{height:70px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;padding:0 28px}.dashmain{width:min(1300px,calc(100% - 40px));margin:auto;padding:32px 0}.dashstats{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin:25px 0}.dashstat{padding:20px;border:1px solid var(--line);border-radius:14px;background:rgba(255,255,255,.025)}.dashstat b{font-size:27px;display:block}.dashstat span{font-size:11px;color:#77828f}.servergrid{display:grid;grid-template-columns:repeat(3,1fr);gap:15px}.server{display:flex;gap:15px;align-items:center}.server img{width:54px;height:54px;border-radius:15px;object-fit:cover;background:#111}.server .meta{min-width:0}.server .meta b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.badge{display:inline-flex;margin-top:5px;padding:4px 8px;border-radius:999px;font-size:10px;background:rgba(255,255,255,.06);color:#aab3bd}.badge.red{background:rgba(255,32,56,.12);color:#ff6d7a}.toolbar{display:flex;gap:10px;flex-wrap:wrap;margin:20px 0}.toolbar input,.toolbar select{background:#070d13;border:1px solid var(--line);color:#fff;padding:11px 13px;border-radius:9px}.tablewrap{overflow:auto;border:1px solid var(--line);border-radius:14px}.table{width:100%;border-collapse:collapse;min-width:700px}.table th,.table td{text-align:left;padding:13px 15px;border-bottom:1px solid var(--line);font-size:12px}.table th{color:#75808c;font-size:10px;text-transform:uppercase;letter-spacing:.08em}.actions{flex-wrap:wrap}.small{padding:8px 11px;font-size:11px}.danger{border-color:rgba(255,32,56,.35);color:#ff7b87}.success{border-color:rgba(50,210,130,.35);color:#71e4ad}.empty{text-align:center;padding:50px;color:#697581}.notice{padding:12px 14px;border:1px solid var(--line);border-radius:10px;color:#9da7b2;font-size:12px}@media(max-width:850px){.links{display:none}.navin{justify-content:space-between}.hero{min-height:650px;background:linear-gradient(90deg,#03070c 0%,rgba(3,7,12,.82) 55%,rgba(3,7,12,.45)),url('/static/planet.jpg') center/cover}.hero .container{padding-top:110px}.grid3,.servergrid{grid-template-columns:1fr 1fr}.why{grid-template-columns:1fr}.whyimg{min-height:300px}.whycopy{padding:40px 25px}.dashstats{grid-template-columns:1fr 1fr}}@media(max-width:560px){.container{width:min(100% - 24px,1160px)}.hero h1{font-size:48px}.actions{flex-direction:column}.stats{gap:22px;flex-wrap:wrap}.grid3,.servergrid{grid-template-columns:1fr}.section{padding:65px 0}.section h2{font-size:29px}.dashnav{padding:0 14px}.dashmain{width:min(100% - 24px,1300px)}.dashstats{grid-template-columns:1fr 1fr}.terminalbody{padding:22px}}
+from flask import Flask, request, redirect, jsonify, send_from_directory, render_template, session
+import os
+import json
+import secrets
+import asyncio
+import aiohttp
+from datetime import datetime
+import logging
 
-</style></head><body>
-<header class="nav"><div class="container navin"><a class="brand" href="/"><img src="/static/anion-logo.png" alt="Anion"></a><nav class="links"><a href="#home">Home</a><a href="#commands">Commands</a><a href="#features">Features</a><a href="#about">About</a><a href="#support">Support</a></nav><a class="btn btn-red" href="/login">◉ Login</a></div></header>
-<main id="home"><section class="hero"><div class="container"><div class="eyebrow">THE ALL-IN-ONE DISCORD BOT</div><h1>MORE THAN<br><span>JUST A BOT</span></h1><p>Anion is a powerful, feature-rich Discord bot designed to make your server smarter, safer and more fun. A clean control layer, fast performance and server tools that actually matter.</p><div class="actions"><a class="btn btn-red" href="https://discord.com/oauth2/authorize?client_id={{ config_client_id|default('') }}&scope=bot%20applications.commands&permissions=8">◉ Add to Discord →</a><a class="btn" href="#commands">>_ View Commands</a></div><div class="stats"><div class="stat"><b id="servers">—</b><span>Servers</span></div><div class="stat"><b id="commands">—</b><span>Commands</span></div><div class="stat"><b id="members">—</b><span>Users</span></div><div class="stat"><b>24/7</b><span>Designed for uptime</span></div></div></div></section>
-<section class="section" id="features"><div class="container"><div class="sectionhead"><div><div class="kicker">FEATURES</div><h2>EVERYTHING YOU NEED<br><span style="color:var(--red)">IN ONE BOT</span></h2></div><p class="muted" style="max-width:380px">From moderation to fun, utility to security — Anion brings your server tools into one fast control system.</p></div><div class="grid3"><article class="card feature"><div class="icon">⌘</div><h3>Moderation</h3><p>Ban, kick, mute, timeout, warn and manage members with permission-aware controls.</p></article><article class="card feature"><div class="icon">⚙</div><h3>Utility</h3><p>Server information, member tools, credentials, setup and operational utilities.</p></article><article class="card feature"><div class="icon">◇</div><h3>Fun</h3><p>Giveaways, tickets and community-focused systems without a pile of separate bots.</p></article><article class="card feature"><div class="icon">◈</div><h3>Security</h3><p>Verification, role-aware access and server controls designed around real permissions.</p></article><article class="card feature"><div class="icon">✦</div><h3>Customisation</h3><p>Configure your server around the tools your community actually uses.</p></article><article class="card feature"><div class="icon">↯</div><h3>Fast & Reliable</h3><p>Persistent Discord controls and a dedicated Railway backend keep actions responsive.</p></article></div></div></section>
-<section id="about"><div class="container why"><div class="whyimg"></div><div class="whycopy"><div class="kicker">WHY CHOOSE ANION</div><h2>BUILT FOR<br><span style="color:var(--red)">THE NEXT GENERATION</span></h2><p class="muted">Whether you're running a small community or a massive server, Anion adapts to your needs. The website shows live bot data rather than pretending numbers are hardcoded.</p><div class="stats"><div class="stat"><b>⚡</b><span>Simple setup</span></div><div class="stat"><b>↻</b><span>Live data</span></div><div class="stat"><b>◉</b><span>Control panel</span></div></div></div></div></section>
-<section class="section" id="commands"><div class="container"><div class="sectionhead"><div><div class="kicker">COMMANDS</div><h2>REAL BOT<br><span style="color:var(--red)">CAPABILITIES</span></h2></div><p class="muted">Live totals are maintained in Firebase by the bot and served through Vercel.</p></div><div class="commandbox"><div class="command"><code>/setup</code><span>Configure Anion systems for a server</span></div><div class="command"><code>/verify</code><span>Start Discord verification</span></div><div class="command"><code>/sync</code><span>Synchronise server members</span></div><div class="command"><code>/credentials</code><span>View your website credentials</span></div><div class="command"><code>/get_creds</code><span>Admin credential lookup</span></div><div class="command"><code>/reset_creds</code><span>Reset a member's credentials</span></div><div class="command"><code>/ping</code><span>Check live bot latency</span></div><div class="command"><code>/shutdown</code><span>Owner-only bot shutdown</span></div></div></div></section>
-<section class="section" id="support"><div class="container"><div class="card" style="text-align:center;padding:50px"><div class="kicker">CONTROL CENTER</div><h2>YOUR SERVER. YOUR CONTROL.</h2><p class="muted">Log in with the credentials issued by Anion to see the servers you share with the bot. Moderators get server-scoped moderation controls; the superadmin account gets global management.</p><a class="btn btn-red" href="/login">Open Control Center →</a></div></div></section></main><footer class="footer"><div class="container">ΛNION — The Discord Bot · Built for communities, by Udit Singh Dhakrey.</div></footer><script>fetch('/api/public/stats').then(r=>r.json()).then(x=>{let s=x.stats||{};document.getElementById('servers').textContent=(s.total_server??0).toLocaleString();document.getElementById('members').textContent=(s.total_user??0).toLocaleString()}).catch(()=>{});</script></body></html>
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+app = Flask(__name__)
+app.secret_key = os.getenv('FLASK_SECRET_KEY') or secrets.token_hex(32)
+app.config['SESSION_COOKIE_SECURE'] = True
+app.config['SESSION_COOKIE_HTTPONLY'] = True
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+
+# ============ FIREBASE SETUP ============
+try:
+    import firebase_admin
+    from firebase_admin import credentials, db
+    FIREBASE_AVAILABLE = True
+except ImportError:
+    FIREBASE_AVAILABLE = False
+    logger.warning("⚠️ Firebase not available")
+
+firebase_app = None
+rtdb_client = None
+
+if FIREBASE_AVAILABLE:
+    try:
+        firebase_json = os.getenv('FIREBASE_KEY_JSON')
+        firebase_url = os.getenv('FIREBASE_URL', 'https://edith-ultimate-mit-project-default-rtdb.firebaseio.com')
+        
+        if firebase_json:
+            cred_dict = json.loads(firebase_json)
+            cred = credentials.Certificate(cred_dict)
+            firebase_app = firebase_admin.initialize_app(cred, {
+                'databaseURL': firebase_url
+            })
+            rtdb_client = db.reference()
+            logger.info("✅ Firebase connected!")
+    except Exception as e:
+        logger.error(f"❌ Firebase error: {e}")
+
+# ============ FIREBASE HELPERS ============
+def firebase_required():
+    if not rtdb_client:
+        logger.error('Firebase is unavailable; refusing to process verification')
+        return False
+    return True
+
+def firebase_get(path):
+    if not rtdb_client: return None
+    try: return rtdb_client.child(path).get()
+    except Exception as e:
+        logger.error(f'Firebase get failed at {path}: {e}'); return None
+
+def firebase_set(path, value):
+    if not rtdb_client: return False
+    try:
+        rtdb_client.child(path).set(value); return True
+    except Exception as e:
+        logger.error(f'Firebase set failed at {path}: {e}'); return False
+
+def firebase_delete(path):
+    if not rtdb_client: return False
+    try:
+        rtdb_client.child(path).delete(); return True
+    except Exception as e:
+        logger.error(f'Firebase delete failed at {path}: {e}'); return False
+
+# ============ ROUTES ============
+@app.route('/static/<path:filename>')
+def static_files(filename):
+    return send_from_directory(os.path.join(app.root_path, 'static'), filename)
+
+@app.route('/favicon.ico')
+def favicon():
+    return ('', 204)
+
+@app.route('/')
+def home():
+    return render_template('index.html', config_client_id=os.getenv('CLIENT_ID',''))
+
+@app.route('/login', methods=['GET','POST'])
+def login():
+    error = None
+    if request.method == 'POST':
+        username = (request.form.get('username') or '').strip()
+        password = request.form.get('password') or ''
+        # Superadmin is intentionally configured only through environment variables.
+        if username == os.getenv('SUPERADMIN_USERNAME','') and password == os.getenv('SUPERADMIN_PASSWORD','') and username:
+            session['user_id'] = str(os.getenv('SUPER_ADMIN_ID','superadmin'))
+            session['role'] = 'superadmin'
+            return redirect('/superadmin')
+        creds = firebase_get('credentials_by_username/' + username)
+        uid = creds.get('user_id') if isinstance(creds, dict) else None
+        if uid:
+            record = firebase_get('credentials/' + str(uid))
+            if isinstance(record, dict) and secrets.compare_digest(str(record.get('password','')), password):
+                session['user_id'] = str(uid)
+                session['role'] = str(record.get('role','member'))
+                return redirect('/moderator' if session['role'] == 'moderator' else '/user')
+        error = 'Invalid username or password.'
+    return render_template('login.html', error=error)
+
+@app.route('/logout')
+def logout():
+    session.clear()
+    return redirect('/login')
+
+def _login_required():
+    return bool(session.get('user_id'))
+
+def _bot_request(path, method='GET', payload=None):
+    base=(os.getenv('BOT_API_URL') or '').rstrip('/')
+    key=os.getenv('CONTROL_API_KEY') or ''
+    if not base or not key: return None, 503
+    async def run():
+        headers={'X-API-Key':key,'X-Actor-ID':str(session.get('user_id','')),'Content-Type':'application/json'}
+        async with aiohttp.ClientSession() as hs:
+            url=base+path
+            if method=='POST':
+                async with hs.post(url,json=payload or {},headers=headers,timeout=20) as r: return r.status, await r.json(content_type=None)
+            async with hs.get(url,headers=headers,timeout=20) as r: return r.status, await r.json(content_type=None)
+    loop=asyncio.new_event_loop(); asyncio.set_event_loop(loop)
+    try: return loop.run_until_complete(run())
+    finally: loop.close()
+
+@app.route('/user')
+def user_page():
+    if not _login_required(): return redirect('/login')
+    return render_template('user.html')
+
+@app.route('/moderator')
+def moderator_page():
+    if not _login_required() or session.get('role') not in ('moderator','superadmin'): return redirect('/login')
+    return render_template('moderator.html')
+
+@app.route('/superadmin')
+def superadmin_page():
+    if not _login_required() or session.get('role') != 'superadmin': return redirect('/login')
+    return render_template('superadmin.html')
+
+@app.route('/api/me')
+def api_me():
+    if not _login_required(): return jsonify({'error':'unauthorized'}),401
+    uid=str(session['user_id']); creds=firebase_get('credentials/'+uid); profile=firebase_get('profiles/'+uid)
+    return jsonify({'ok':True,'user':{'id':uid,'username':profile.get('username') if isinstance(profile,dict) else None,'profile':profile or {},'credentials':creds or {},'role':session.get('role','member')}})
+
+@app.route('/api/guilds')
+def api_guilds():
+    if not _login_required(): return jsonify({'error':'unauthorized'}),401
+    status,data=_bot_request('/api/v1/user/'+str(session['user_id'])+'/guilds')
+    return jsonify(data or {'guilds':[]}), status
+
+@app.route('/api/superadmin/guilds')
+def api_superadmin_guilds():
+    if session.get('role')!='superadmin': return jsonify({'error':'forbidden'}),403
+    status,data=_bot_request('/api/v1/superadmin/guilds'); return jsonify(data or {}),status
+
+@app.route('/api/guild/<guild_id>')
+def api_guild_proxy(guild_id):
+    if not _login_required(): return jsonify({'error':'unauthorized'}),401
+    status,data=_bot_request('/api/v1/guild/'+guild_id+'?actor_id='+str(session['user_id'])+'&full=1'); return jsonify(data or {}),status
+
+@app.route('/api/action/<action>', methods=['POST'])
+def api_action_proxy(action):
+    if not _login_required(): return jsonify({'error':'unauthorized'}),401
+    payload=request.get_json(silent=True) or {}; payload['action']=action
+    status,data=_bot_request('/api/v1/action', 'POST', payload); return jsonify(data or {}),status
+
+@app.route('/api/warnings/<guild_id>/<user_id>')
+def api_warnings(guild_id,user_id):
+    if not _login_required(): return jsonify({'error':'unauthorized'}),401
+    status,data=_bot_request('/api/v1/warnings/'+guild_id+'/'+user_id); return jsonify(data or {}),status
+
+@app.route('/api/public/stats')
+def public_stats():
+    # Public homepage stats are served directly from Firebase so Vercel handles
+    # read-only web traffic without waking/calling the Railway bot.
+    stats = firebase_get('for_web')
+    if not isinstance(stats, dict):
+        return jsonify({'ok': True, 'stats': {'total_server': 0, 'total_user': 0}})
+    return jsonify({
+        'ok': True,
+        'stats': {
+            'total_server': int(stats.get('total_server', 0) or 0),
+            'total_user': int(stats.get('total_user', 0) or 0)
+        }
+    })
+
+@app.route('/callback')
+def oauth_callback():
+    try:
+        code = request.args.get('code')
+        state = request.args.get('state')
+        error = request.args.get('error')
+        
+        logger.info(f"📥 OAuth Callback received!")
+        
+        if error:
+            return f"<h1>Error: {error}</h1><p>Please try /verify again.</p>"
+        
+        if not code:
+            return "<h1>No code provided</h1><p>Please try /verify again.</p>", 400
+        
+        if not state:
+            return "<h1>Invalid verification link</h1><p>No verification state was supplied. Please run /verify again.</p>", 400
+        if not firebase_required():
+            return "<h1>Verification temporarily unavailable</h1><p>Firebase is not connected.</p>", 503
+
+        session = firebase_get(f'oauth_states/{state}')
+        logger.info(f'🔎 OAuth state lookup in Firebase: found={bool(session)}')
+        if not isinstance(session, dict):
+            return "<h1>Session expired</h1><p>The verification session was not found in Firebase. Please run /verify again.</p>", 400
+
+        created = session.get('timestamp') if isinstance(session, dict) else None
+        if created:
+            try:
+                created_dt = datetime.fromisoformat(created.replace('Z', '+00:00')).replace(tzinfo=None)
+                if (datetime.utcnow() - created_dt).total_seconds() > 600:
+                    rtdb_client.child(f'oauth_states/{state}').delete()
+                    return "<h1>Session expired</h1><p>The verification link expired. Please run /verify again.</p>", 400
+            except Exception:
+                pass
+        
+        user_id = session['user_id']
+        guild_id = session['guild_id']
+        
+        # Exchange code for token
+        async def exchange_code():
+            data = {
+                'client_id': os.getenv('CLIENT_ID'),
+                'client_secret': os.getenv('CLIENT_SECRET'),
+                'grant_type': 'authorization_code',
+                'code': code,
+                'redirect_uri': os.getenv('REDIRECT_URI', '').strip()
+            }
+            async with aiohttp.ClientSession() as http_session:
+                async with http_session.post('https://discord.com/api/oauth2/token', data=data) as resp:
+                    if resp.status == 200:
+                        return await resp.json()
+                    return None
+        
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        token_data = loop.run_until_complete(exchange_code())
+        loop.close()
+        
+        if not token_data:
+            return "<h1>Token exchange failed</h1><p>Check the Discord OAuth redirect URI and try again.</p>", 400
+        
+        access_token = token_data.get('access_token')
+        if not access_token:
+            return "<h1>Token exchange failed</h1><p>Discord did not return an access token.</p>", 400
+
+        async def get_user_data():
+            headers = {'Authorization': f'Bearer {access_token}'}
+            async with aiohttp.ClientSession() as http_session:
+                async with http_session.get('https://discord.com/api/users/@me', headers=headers) as resp:
+                    if resp.status == 200:
+                        return await resp.json()
+                    return None
+        
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        user_data = loop.run_until_complete(get_user_data())
+        loop.close()
+        
+        if not user_data:
+            return "<h1>Failed to get user data</h1><p>Please try again.</p>"
+        
+        username = user_data.get('username')
+        discord_id = user_data.get('id')
+        email = user_data.get('email', 'Not provided')
+        avatar = user_data.get('avatar')
+        avatar_url = f"https://cdn.discordapp.com/avatars/{discord_id}/{avatar}.png" if avatar else ""
+        
+        # Vercel is only the OAuth/web layer. Do NOT write verification records
+        # or generate credentials here. Send the complete verified user data to
+        # Railway; Railway is the single authority that writes Firebase, assigns
+        # the role, generates cr_user/cr_password, DMs the user, and logs the
+        # credentials to the dedicated collection channel.
+
+        bot_api_url = (os.getenv('BOT_API_URL') or '').rstrip('/')
+        control_key = os.getenv('CONTROL_API_KEY') or ''
+        if bot_api_url and control_key:
+            try:
+                async def notify_bot():
+                    payload = {
+                        'user_id': str(discord_id),
+                        'guild_id': str(guild_id),
+                        'username': username,
+                        'email': email,
+                        'avatar': avatar_url,
+                        'global_name': user_data.get('global_name') or username
+                    }
+                    headers = {'X-API-Key': control_key, 'Content-Type': 'application/json'}
+                    async with aiohttp.ClientSession() as http_session:
+                        async with http_session.post(f'{bot_api_url}/api/v1/verify', json=payload, headers=headers, timeout=15) as resp:
+                            return resp.status, await resp.text()
+                loop = asyncio.new_event_loop(); asyncio.set_event_loop(loop)
+                bot_status, bot_text = loop.run_until_complete(notify_bot()); loop.close()
+                try:
+                    bot_result = json.loads(bot_text) if isinstance(bot_text, str) else bot_text
+                except Exception:
+                    bot_result = {}
+                if bot_status >= 400 or not isinstance(bot_result, dict) or not bot_result.get('ok'):
+                    logger.error(f'❌ Bot verification API failed | HTTP={bot_status} | response={bot_text[:1000]}')
+                    detail = bot_result.get('detail') or bot_result.get('error') if isinstance(bot_result, dict) else bot_text
+                    return f"<h1>Discord verification failed</h1><p>Railway returned HTTP {bot_status}.</p><pre>{detail}</pre><p>Check the Railway logs for the exact failure.</p>", 502
+
+                # Show the real Railway result instead of displaying a fake success page.
+                logger.info(f"✅ Railway verification result: {json.dumps(bot_result, default=str)}")
+                if not bot_result.get('role_assigned'):
+                    return "<h1>Role assignment failed</h1><p>Railway did not confirm that ✅ Verified was assigned. Check Manage Roles and role hierarchy.</p>", 502
+            except Exception as e:
+                logger.error(f'❌ Could not contact Railway bot: {e}')
+                return "<h1>Discord verification unavailable</h1><p>Please run /verify again.</p>", 502
+
+        # Only consume the OAuth state after the entire verification pipeline succeeded.
+        if state and rtdb_client:
+            try:
+                rtdb_client.child(f'oauth_states/{state}').delete()
+            except Exception as e:
+                logger.warning(f'⚠️ Could not delete OAuth state after success: {e}')
+
+        return f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Verification Successful</title>
+            <style>
+                * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+                body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #1a1a2e; color: white; display: flex; justify-content: center; align-items: center; min-height: 100vh; padding: 20px; }}
+                .container {{ background: #2d2d44; padding: 50px; border-radius: 20px; text-align: center; max-width: 500px; width: 100%; box-shadow: 0 20px 60px rgba(0,0,0,0.5); border: 1px solid #3d3d5c; }}
+                .success {{ color: #4caf50; font-size: 80px; margin-bottom: 20px; }}
+                h1 {{ color: #ffffff; font-size: 28px; margin-bottom: 10px; }}
+                .subtitle {{ color: #b5b5c4; font-size: 16px; margin-bottom: 30px; }}
+                .user-info {{ background: #1e1e32; border-radius: 12px; padding: 20px; margin: 20px 0; text-align: left; }}
+                .user-info .row {{ display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #2d2d44; }}
+                .user-info .row:last-child {{ border-bottom: none; }}
+                .user-info .label {{ color: #6d6d8a; font-size: 13px; }}
+                .user-info .value {{ color: #ffffff; font-size: 14px; }}
+                .status-box {{ padding: 15px; border-radius: 10px; margin: 15px 0; background: #1e1e32; color: #4caf50; font-weight: 600; }}
+                .button {{ background: #5865f2; color: white; border: none; padding: 16px 40px; font-size: 18px; font-weight: 600; border-radius: 10px; cursor: pointer; width: 100%; margin-top: 20px; text-decoration: none; display: inline-block; }}
+                .button:hover {{ background: #4752c4; transform: translateY(-2px); box-shadow: 0 10px 30px rgba(88,101,242,0.3); }}
+                .footer {{ margin-top: 25px; color: #4d4d6a; font-size: 12px; border-top: 1px solid #2d2d44; padding-top: 20px; }}
+                .badge {{ display: inline-block; background: #4caf50; color: white; padding: 4px 12px; border-radius: 20px; font-size: 11px; font-weight: 600; }}
+                .avatar {{ width: 80px; height: 80px; border-radius: 50%; margin: 10px auto; display: block; border: 3px solid #5865f2; }}
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <div class="success">✅</div>
+                <h1>Verification Successful!</h1>
+                <p class="subtitle">Welcome to the server! 🎉</p>
+                
+                <img src="{avatar_url}" class="avatar" onerror="this.style.display='none'">
+                
+                <div class="user-info">
+                    <div class="row">
+                        <span class="label">👤 Username</span>
+                        <span class="value">{username}</span>
+                    </div>
+                    <div class="row">
+                        <span class="label">🆔 User ID</span>
+                        <span class="value">{discord_id}</span>
+                    </div>
+                    <div class="row">
+                        <span class="label">📧 Email</span>
+                        <span class="value">{email}</span>
+                    </div>
+                    <div class="row">
+                        <span class="label">🔓 Status</span>
+                        <span class="value"><span class="badge">Verified ✅</span></span>
+                    </div>
+                </div>
+                
+                <div class="status-box">
+                    <div>✅ Verified role: <b>{'ASSIGNED' if bot_result.get('role_assigned') else 'FAILED'}</b></div>
+                    <div>🔑 Credentials: <b>{'CREATED' if bot_result.get('credentials_created') else 'FAILED'}</b></div>
+                    <div>☁️ Firebase: <b>{'SAVED' if bot_result.get('firebase_saved') else 'FAILED'}</b></div>
+                    <div>💬 DM: <b>{'SENT' if bot_result.get('dm_sent') else 'FAILED'}</b></div>
+                    <div>📋 Collection log: <b>{'SENT' if bot_result.get('collection_channel_sent') else 'FAILED'}</b></div>
+                    <div>📝 Server log: <b>{'SENT' if bot_result.get('log_sent') else 'FAILED'}</b></div>
+                </div>
+                
+                <a href="https://discord.com/app" class="button">Return to Discord</a>
+                
+                <p class="footer">You can now close this tab. A verification DM has been sent to you.</p>
+            </div>
+        </body>
+        </html>
+        """
+    
+    except Exception as e:
+        logger.error(f"❌ Callback error: {e}")
+        return f"<h1>Error: {str(e)}</h1>"
+
+@app.route('/health')
+def health():
+    return jsonify({
+        'status': 'online',
+        'firebase': '✅ Connected' if rtdb_client else '❌ Not connected',
+        'timestamp': datetime.now().isoformat(),
+        'redirect_uri_configured': bool(os.getenv('REDIRECT_URI')),
+        'firebase_url_configured': bool(os.getenv('FIREBASE_URL')),
+        'bot_api_configured': bool(os.getenv('BOT_API_URL') and os.getenv('CONTROL_API_KEY'))
+    })
+
+@app.route('/api/users')
+def api_users():
+    if not rtdb_client:
+        return jsonify({'error': 'Firebase not connected'}), 500
+    
+    try:
+        users = rtdb_client.child('all_users').get()
+        if users:
+            return jsonify({'users': users, 'count': len(users)})
+        return jsonify({'users': {}, 'count': 0})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+# Vercel needs this
+app.debug = False
+
+if __name__ == "__main__":
+    app.run(host='0.0.0.0', port=8080)
