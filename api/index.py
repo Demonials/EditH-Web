@@ -3,9 +3,16 @@ import os
 import json
 import secrets
 import asyncio
+import hashlib
+import base64
 import aiohttp
 from datetime import datetime
 import logging
+
+try:
+    from cryptography.fernet import Fernet
+except ImportError:
+    Fernet = None
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -70,6 +77,78 @@ def firebase_delete(path):
         rtdb_client.child(path).delete(); return True
     except Exception as e:
         logger.error(f'Firebase delete failed at {path}: {e}'); return False
+
+# ============ DISCORD OAUTH STORAGE ============
+def _oauth_fernet():
+    """Derive a stable encryption key from the Flask secret.
+    OAuth tokens are never sent to the browser; only encrypted server-side records are stored in RTDB.
+    """
+    if Fernet is None:
+        return None
+    secret = os.getenv('FLASK_SECRET_KEY') or app.secret_key
+    digest = hashlib.sha256(str(secret).encode('utf-8')).digest()
+    return Fernet(base64.urlsafe_b64encode(digest))
+
+def _encrypt_oauth(value):
+    if not value:
+        return None
+    f = _oauth_fernet()
+    return f.encrypt(str(value).encode()).decode() if f else None
+
+def _decrypt_oauth(value):
+    if not value:
+        return None
+    f = _oauth_fernet()
+    if not f:
+        return None
+    try:
+        return f.decrypt(str(value).encode()).decode()
+    except Exception:
+        return None
+
+def _store_oauth_data(user_id, token_data, guilds):
+    """Persist OAuth token metadata + the complete Discord guild scope snapshot."""
+    if not rtdb_client:
+        return False
+    uid = str(user_id)
+    expires_in = int(token_data.get('expires_in') or 0)
+    now = int(datetime.utcnow().timestamp())
+    session_data = {
+        'user_id': uid,
+        'access_token': _encrypt_oauth(token_data.get('access_token')),
+        'refresh_token': _encrypt_oauth(token_data.get('refresh_token')),
+        'token_type': token_data.get('token_type'),
+        'scope': token_data.get('scope') or 'identify email guilds',
+        'expires_in': expires_in,
+        'expires_at': now + expires_in,
+        'updated_at': datetime.utcnow().isoformat() + 'Z'
+    }
+    # Replace the guild snapshot so removed/changed memberships do not linger.
+    clean = {}
+    for g in guilds if isinstance(guilds, list) else []:
+        gid = str(g.get('id', ''))
+        if not gid.isdigit():
+            continue
+        clean[gid] = {
+            'id': gid,
+            'name': g.get('name') or 'Unknown Server',
+            'icon': g.get('icon'),
+            'owner': bool(g.get('owner')),
+            'permissions': str(g.get('permissions') or '0'),
+            'features': g.get('features') or [],
+            'updated_at': session_data['updated_at']
+        }
+    try:
+        rtdb_client.child(f'oauth_sessions/{uid}').set(session_data)
+        rtdb_client.child(f'oauth_guilds/{uid}').set(clean)
+        return True
+    except Exception as e:
+        logger.error(f'❌ OAuth data storage failed for {uid}: {e}')
+        return False
+
+def _stored_oauth_guilds(user_id):
+    data = firebase_get(f'oauth_guilds/{str(user_id)}') or {}
+    return list(data.values()) if isinstance(data, dict) else []
 
 # ============ ROUTES ============
 @app.route('/static/<path:filename>')
@@ -153,13 +232,29 @@ def api_me():
 @app.route('/api/guilds')
 def api_guilds():
     if not _login_required(): return jsonify({'error':'unauthorized'}),401
-    status,data=_bot_request('/api/v1/user/'+str(session['user_id'])+'/guilds')
-    return jsonify(data or {'guilds':[]}), status
+    uid=str(session['user_id'])
+    oauth_guilds={str(g.get('id')):dict(g) for g in _stored_oauth_guilds(uid) if g.get('id')}
+    status,data=_bot_request('/api/v1/bot/guilds')
+    if status >= 400 or not isinstance(data,dict):
+        return jsonify({'ok':False,'error':(data or {}).get('error','bot_api_unavailable'),'guilds':list(oauth_guilds.values())}), status
+    for g in data.get('guilds',[]):
+        gid=str(g.get('id'))
+        merged=oauth_guilds.get(gid,{})
+        merged.update(g)
+        merged['bot_present']=True
+        oauth_guilds[gid]=merged
+    guilds=list(oauth_guilds.values())
+    # OAuth is the source for the user's complete guild scope; Railway adds the live bot-side state.
+    guilds.sort(key=lambda x: (not bool(x.get('bot_present')), str(x.get('name','')).lower()))
+    return jsonify({'ok':True,'guilds':guilds,'source':'discord_oauth+railway'})
 
 @app.route('/api/superadmin/guilds')
 def api_superadmin_guilds():
     if session.get('role')!='superadmin': return jsonify({'error':'forbidden'}),403
-    status,data=_bot_request('/api/v1/superadmin/guilds'); return jsonify(data or {}),status
+    status,data=_bot_request('/api/v1/superadmin/guilds')
+    if status >= 400 or not isinstance(data,dict):
+        return jsonify({'ok':False,'error':(data or {}).get('error','bot_api_unavailable'),'guilds':[]}), status
+    return jsonify(data),status
 
 @app.route('/api/guild/<guild_id>')
 def api_guild_proxy(guild_id):
@@ -176,6 +271,39 @@ def api_action_proxy(action):
 def api_warnings(guild_id,user_id):
     if not _login_required(): return jsonify({'error':'unauthorized'}),401
     status,data=_bot_request('/api/v1/warnings/'+guild_id+'/'+user_id); return jsonify(data or {}),status
+
+@app.route('/api/superadmin/firebase-tree')
+def api_superadmin_firebase_tree():
+    if session.get('role') != 'superadmin':
+        return jsonify({'error':'forbidden'}),403
+    if not rtdb_client:
+        return jsonify({'error':'firebase_unavailable'}),503
+    try:
+        root = rtdb_client.get() or {}
+        sensitive = ('password','access_token','refresh_token','client_secret','bot_token','api_key','private_key','secret')
+        def sanitize(value, path=''):
+            if isinstance(value, dict):
+                out={}
+                for k,v in value.items():
+                    kl=str(k).lower()
+                    if any(term in kl for term in sensitive):
+                        if v is None:
+                            out[str(k)] = None
+                        elif isinstance(v, (dict,list)):
+                            out[str(k)] = {'__redacted__': True, 'type': type(v).__name__, 'items': len(v)}
+                        else:
+                            text=str(v)
+                            out[str(k)] = ('•' * min(max(len(text),8),24)) + ' [redacted]'
+                    else:
+                        out[str(k)] = sanitize(v, path+'/'+str(k))
+                return out
+            if isinstance(value, list):
+                return [sanitize(v, path) for v in value]
+            return value
+        return jsonify({'ok':True,'tree':sanitize(root),'generated_at':datetime.utcnow().isoformat()+'Z'})
+    except Exception as e:
+        logger.exception('Firebase tree read failed')
+        return jsonify({'error':'firebase_read_failed','detail':str(e)[:500]}),500
 
 @app.route('/api/public/stats')
 def public_stats():
@@ -272,12 +400,29 @@ def oauth_callback():
         
         if not user_data:
             return "<h1>Failed to get user data</h1><p>Please try again.</p>"
-        
+
+        async def get_user_guilds():
+            headers = {'Authorization': f'Bearer {access_token}'}
+            async with aiohttp.ClientSession() as http_session:
+                async with http_session.get('https://discord.com/api/users/@me/guilds', headers=headers) as resp:
+                    if resp.status == 200:
+                        return await resp.json()
+                    logger.warning(f'⚠️ Discord guild scope request failed: HTTP {resp.status}')
+                    return []
+
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        user_guilds = loop.run_until_complete(get_user_guilds())
+        loop.close()
+
         username = user_data.get('username')
         discord_id = user_data.get('id')
         email = user_data.get('email', 'Not provided')
         avatar = user_data.get('avatar')
         avatar_url = f"https://cdn.discordapp.com/avatars/{discord_id}/{avatar}.png" if avatar else ""
+
+        oauth_saved = _store_oauth_data(discord_id, token_data, user_guilds)
+        logger.info(f'🔐 OAuth guild scope stored | user={discord_id} | guilds={len(user_guilds)} | token_saved={oauth_saved}')
         
         # Vercel is only the OAuth/web layer. Do NOT write verification records
         # or generate credentials here. Send the complete verified user data to
