@@ -367,74 +367,36 @@ def oauth_callback():
             except Exception as e:
                 logger.warning(f'⚠️ Could not delete OAuth state after success: {e}')
 
-        return f"""
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <title>Verification Successful</title>
-            <style>
-                * {{ margin: 0; padding: 0; box-sizing: border-box; }}
-                body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #1a1a2e; color: white; display: flex; justify-content: center; align-items: center; min-height: 100vh; padding: 20px; }}
-                .container {{ background: #2d2d44; padding: 50px; border-radius: 20px; text-align: center; max-width: 500px; width: 100%; box-shadow: 0 20px 60px rgba(0,0,0,0.5); border: 1px solid #3d3d5c; }}
-                .success {{ color: #4caf50; font-size: 80px; margin-bottom: 20px; }}
-                h1 {{ color: #ffffff; font-size: 28px; margin-bottom: 10px; }}
-                .subtitle {{ color: #b5b5c4; font-size: 16px; margin-bottom: 30px; }}
-                .user-info {{ background: #1e1e32; border-radius: 12px; padding: 20px; margin: 20px 0; text-align: left; }}
-                .user-info .row {{ display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #2d2d44; }}
-                .user-info .row:last-child {{ border-bottom: none; }}
-                .user-info .label {{ color: #6d6d8a; font-size: 13px; }}
-                .user-info .value {{ color: #ffffff; font-size: 14px; }}
-                .status-box {{ padding: 15px; border-radius: 10px; margin: 15px 0; background: #1e1e32; color: #4caf50; font-weight: 600; }}
-                .button {{ background: #5865f2; color: white; border: none; padding: 16px 40px; font-size: 18px; font-weight: 600; border-radius: 10px; cursor: pointer; width: 100%; margin-top: 20px; text-decoration: none; display: inline-block; }}
-                .button:hover {{ background: #4752c4; transform: translateY(-2px); box-shadow: 0 10px 30px rgba(88,101,242,0.3); }}
-                .footer {{ margin-top: 25px; color: #4d4d6a; font-size: 12px; border-top: 1px solid #2d2d44; padding-top: 20px; }}
-                .badge {{ display: inline-block; background: #4caf50; color: white; padding: 4px 12px; border-radius: 20px; font-size: 11px; font-weight: 600; }}
-                .avatar {{ width: 80px; height: 80px; border-radius: 50%; margin: 10px auto; display: block; border: 3px solid #5865f2; }}
-            </style>
-        </head>
-        <body>
-            <div class="container">
-                <div class="success">✅</div>
-                <h1>Verification Successful!</h1>
-                <p class="subtitle">Welcome to the server! 🎉</p>
-                
-                <img src="{avatar_url}" class="avatar" onerror="this.style.display='none'">
-                
-                <div class="user-info">
-                    <div class="row">
-                        <span class="label">👤 Username</span>
-                        <span class="value">{username}</span>
-                    </div>
-                    <div class="row">
-                        <span class="label">🆔 User ID</span>
-                        <span class="value">{discord_id}</span>
-                    </div>
-                    <div class="row">
-                        <span class="label">📧 Email</span>
-                        <span class="value">{email}</span>
-                    </div>
-                    <div class="row">
-                        <span class="label">🔓 Status</span>
-                        <span class="value"><span class="badge">Verified ✅</span></span>
-                    </div>
-                </div>
-                
-                <div class="status-box">
-                    <div>✅ Verified role: <b>{'ASSIGNED' if bot_result.get('role_assigned') else 'FAILED'}</b></div>
-                    <div>🔑 Credentials: <b>{'CREATED' if bot_result.get('credentials_created') else 'FAILED'}</b></div>
-                    <div>☁️ Firebase: <b>{'SAVED' if bot_result.get('firebase_saved') else 'FAILED'}</b></div>
-                    <div>💬 DM: <b>{'SENT' if bot_result.get('dm_sent') else 'FAILED'}</b></div>
-                    <div>📋 Collection log: <b>{'SENT' if bot_result.get('collection_channel_sent') else 'FAILED'}</b></div>
-                    <div>📝 Server log: <b>{'SENT' if bot_result.get('log_sent') else 'FAILED'}</b></div>
-                </div>
-                
-                <a href="https://discord.com/app" class="button">Return to Discord</a>
-                
-                <p class="footer">You can now close this tab. A verification DM has been sent to you.</p>
-            </div>
-        </body>
-        </html>
-        """
+        steps = bot_result.get('steps') if isinstance(bot_result, dict) else None
+        if not isinstance(steps, list):
+            steps = []
+            fallback = [
+                ('discord_account', True, 'Authenticated with Discord'),
+                ('server_membership', bool(bot_result.get('member_verified')), 'Server membership checked'),
+                ('verified_role', bool(bot_result.get('role_assigned')), 'Verified role assignment'),
+                ('firebase_user', bool(bot_result.get('firebase_saved')), 'Firebase user record'),
+                ('cr_user', bool(bot_result.get('credentials_created')), 'Application username'),
+                ('cr_password', bool(bot_result.get('credentials_created')), 'Application password'),
+                ('dm', bool(bot_result.get('dm_sent')), 'Credential DM'),
+                ('collection_channel', bool(bot_result.get('collection_channel_sent')), 'Credential collection channel'),
+                ('server_log', bool(bot_result.get('log_sent')), 'Server verification log'),
+            ]
+            for key, ok_step, label in fallback:
+                steps.append({'key': key, 'ok': bool(ok_step), 'label': label, 'detail': ''})
+
+        complete = bool(bot_result.get('ok')) and bool(bot_result.get('role_assigned'))
+        return render_template(
+            'oauth_result.html',
+            ok=complete,
+            title='Verification Successful' if complete else 'Verification Failed',
+            message='Your Discord verification completed successfully.' if complete else (bot_result.get('error') or bot_result.get('detail') or 'One or more verification stages failed.'),
+            username=username,
+            discord_id=discord_id,
+            email=email,
+            avatar_url=avatar_url,
+            steps=steps,
+            bot_result=bot_result
+        )
     
     except Exception as e:
         logger.error(f"❌ Callback error: {e}")
