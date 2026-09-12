@@ -18,7 +18,16 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
-app.secret_key = os.getenv('FLASK_SECRET_KEY') or secrets.token_hex(32)
+# Vercel may run multiple serverless instances. A new random secret on every
+# cold start invalidates Flask login cookies and makes dashboards appear logged out.
+# FLASK_SECRET_KEY should be configured in Vercel; CLIENT_SECRET is only a stable
+# fallback so an omitted Flask secret does not silently break sessions.
+_configured_secret = os.getenv('FLASK_SECRET_KEY')
+if not _configured_secret:
+    _fallback_material = os.getenv('CLIENT_SECRET') or os.getenv('BOT_API_URL') or 'edith-session-fallback'
+    _configured_secret = hashlib.sha256(_fallback_material.encode('utf-8')).hexdigest()
+    logger.warning('⚠️ FLASK_SECRET_KEY is not configured; using a stable derived fallback. Set FLASK_SECRET_KEY in Vercel.')
+app.secret_key = _configured_secret
 app.config['SESSION_COOKIE_SECURE'] = True
 app.config['SESSION_COOKIE_HTTPONLY'] = True
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
@@ -106,8 +115,13 @@ def _decrypt_oauth(value):
     except Exception:
         return None
 
-def _store_oauth_data(user_id, token_data, guilds):
-    """Persist OAuth token metadata + the complete Discord guild scope snapshot."""
+def _store_oauth_data(user_id, token_data, guilds, connections=None, guild_members=None):
+    """Persist the current Discord OAuth snapshot for this user.
+
+    Only data actually returned by Discord for the granted scopes is stored.
+    The guild snapshot is replaced on every OAuth login so departed servers
+    do not remain in the current-server view.
+    """
     if not rtdb_client:
         return False
     uid = str(user_id)
@@ -118,7 +132,7 @@ def _store_oauth_data(user_id, token_data, guilds):
         'access_token': _encrypt_oauth(token_data.get('access_token')),
         'refresh_token': _encrypt_oauth(token_data.get('refresh_token')),
         'token_type': token_data.get('token_type'),
-        'scope': token_data.get('scope') or 'identify email guilds',
+        'scope': token_data.get('scope') or 'identify email guilds connections guilds.members.read',
         'expires_in': expires_in,
         'expires_at': now + expires_in,
         'updated_at': datetime.utcnow().isoformat() + 'Z'
@@ -138,9 +152,51 @@ def _store_oauth_data(user_id, token_data, guilds):
             'features': g.get('features') or [],
             'updated_at': session_data['updated_at']
         }
+    members_clean = {}
+    if isinstance(guild_members, dict):
+        for gid, member in guild_members.items():
+            if not isinstance(member, dict) or not str(gid).isdigit():
+                continue
+            members_clean[str(gid)] = {
+                'user_id': str(member.get('user', {}).get('id') or member.get('user_id') or uid),
+                'nick': member.get('nick'),
+                'avatar': member.get('avatar'),
+                'roles': [str(x) for x in (member.get('roles') or [])],
+                'joined_at': member.get('joined_at'),
+                'premium_since': member.get('premium_since'),
+                'deaf': bool(member.get('deaf', False)),
+                'mute': bool(member.get('mute', False)),
+                'flags': member.get('flags', 0),
+                'pending': member.get('pending', False),
+                'updated_at': session_data['updated_at']
+            }
+
+    connections_clean = {}
+    if isinstance(connections, list):
+        for item in connections:
+            if not isinstance(item, dict):
+                continue
+            ctype = str(item.get('type') or '')
+            cid = str(item.get('id') or '')
+            key = cid or hashlib.sha256(json.dumps(item, sort_keys=True).encode()).hexdigest()[:16]
+            connections_clean[key] = {
+                'id': cid,
+                'type': ctype,
+                'name': item.get('name'),
+                'verified': bool(item.get('verified', False)),
+                'visibility': item.get('visibility'),
+                'show_activity': item.get('show_activity'),
+                'two_way_link': item.get('two_way_link'),
+                'friend_sync': item.get('friend_sync'),
+                'metadata_visibility': item.get('metadata_visibility'),
+                'updated_at': session_data['updated_at']
+            }
+
     try:
         rtdb_client.child(f'oauth_sessions/{uid}').set(session_data)
         rtdb_client.child(f'oauth_guilds/{uid}').set(clean)
+        rtdb_client.child(f'oauth_guild_members/{uid}').set(members_clean)
+        rtdb_client.child(f'oauth_connections/{uid}').set(connections_clean)
         return True
     except Exception as e:
         logger.error(f'❌ OAuth data storage failed for {uid}: {e}')
@@ -202,7 +258,7 @@ def _bot_request(path, method='GET', payload=None):
         async with aiohttp.ClientSession() as hs:
             url=base+path
             if method=='POST':
-                async with hs.post(url,json=payload or {},headers=headers,timeout=20) as r: return r.status, await r.json(content_type=None)
+                async with hs.post(url,json=payload or {},headers=headers,timeout=45) as r: return r.status, await r.json(content_type=None)
             async with hs.get(url,headers=headers,timeout=20) as r: return r.status, await r.json(content_type=None)
     loop=asyncio.new_event_loop(); asyncio.set_event_loop(loop)
     try: return loop.run_until_complete(run())
@@ -226,17 +282,56 @@ def superadmin_page():
 @app.route('/api/me')
 def api_me():
     if not _login_required(): return jsonify({'error':'unauthorized'}),401
-    uid=str(session['user_id']); creds=firebase_get('credentials/'+uid); profile=firebase_get('profiles/'+uid)
-    return jsonify({'ok':True,'user':{'id':uid,'username':profile.get('username') if isinstance(profile,dict) else None,'profile':profile or {},'credentials':creds or {},'role':session.get('role','member')}})
+    uid=str(session['user_id'])
+    creds=firebase_get('credentials/'+uid)
+    profile=firebase_get('profiles/'+uid)
+    # Credential records are the source of truth for dashboard access. Refresh
+    # the session role so a Discord permission change is reflected without logout.
+    role = str((creds or {}).get('role') or session.get('role') or 'member')
+    if role not in ('member','moderator','superadmin'):
+        role = 'member'
+    session['role'] = role
+    return jsonify({'ok':True,'user':{
+        'id':uid,
+        'username':profile.get('username') if isinstance(profile,dict) else None,
+        'profile':profile or {},
+        'credentials':creds or {},
+        'role':role
+    }})
 
 @app.route('/api/guilds')
 def api_guilds():
     if not _login_required(): return jsonify({'error':'unauthorized'}),401
     uid=str(session['user_id'])
     oauth_guilds={str(g.get('id')):dict(g) for g in _stored_oauth_guilds(uid) if g.get('id')}
+    # Credential-based users may not have completed Discord OAuth recently.
+    # Firebase's reverse membership index keeps their server list available.
+    stored_memberships = firebase_get(f'user_guilds/{uid}') or {}
+    if isinstance(stored_memberships, dict):
+        for gid, membership in stored_memberships.items():
+            if isinstance(membership, dict):
+                merged = oauth_guilds.get(str(gid), {})
+                merged.update({
+                    'id': str(gid),
+                    'name': membership.get('guild_name') or merged.get('name') or 'Unknown Server',
+                    'icon': membership.get('guild_icon') or merged.get('icon'),
+                    'is_owner': bool(membership.get('is_owner')),
+                    'is_admin': bool(membership.get('is_admin')),
+                    'permissions': str(membership.get('permissions') or merged.get('permissions') or '0')
+                })
+                oauth_guilds[str(gid)] = merged
     status,data=_bot_request('/api/v1/bot/guilds')
-    if status >= 400 or not isinstance(data,dict):
-        return jsonify({'ok':False,'error':(data or {}).get('error','bot_api_unavailable'),'guilds':list(oauth_guilds.values())}), status
+    if status is None or status >= 400 or not isinstance(data,dict):
+        # The dashboard should still show the user's Discord OAuth guilds when
+        # the live Railway API is temporarily unavailable. Live-only actions
+        # will continue to report their actual Railway error.
+        return jsonify({
+            'ok':True,
+            'degraded':True,
+            'error':(data or {}).get('error','bot_api_unavailable') if isinstance(data,dict) else 'bot_api_unavailable',
+            'guilds':list(oauth_guilds.values()),
+            'source':'discord_oauth'
+        })
     for g in data.get('guilds',[]):
         gid=str(g.get('id'))
         merged=oauth_guilds.get(gid,{})
@@ -259,18 +354,27 @@ def api_superadmin_guilds():
 @app.route('/api/guild/<guild_id>')
 def api_guild_proxy(guild_id):
     if not _login_required(): return jsonify({'error':'unauthorized'}),401
-    status,data=_bot_request('/api/v1/guild/'+guild_id+'?actor_id='+str(session['user_id'])+'&full=1'); return jsonify(data or {}),status
+    status,data=_bot_request('/api/v1/guild/'+guild_id+'?actor_id='+str(session['user_id'])+'&full=1')
+    if status is None:
+        return jsonify({'ok':False,'error':'bot_api_unavailable'}),503
+    return jsonify(data or {}),status
 
 @app.route('/api/action/<action>', methods=['POST'])
 def api_action_proxy(action):
     if not _login_required(): return jsonify({'error':'unauthorized'}),401
     payload=request.get_json(silent=True) or {}; payload['action']=action
-    status,data=_bot_request('/api/v1/action', 'POST', payload); return jsonify(data or {}),status
+    status,data=_bot_request('/api/v1/action/'+action, 'POST', payload)
+    if status is None:
+        return jsonify({'ok':False,'error':'bot_api_unavailable'}),503
+    return jsonify(data or {}),status
 
 @app.route('/api/warnings/<guild_id>/<user_id>')
 def api_warnings(guild_id,user_id):
     if not _login_required(): return jsonify({'error':'unauthorized'}),401
-    status,data=_bot_request('/api/v1/warnings/'+guild_id+'/'+user_id); return jsonify(data or {}),status
+    status,data=_bot_request('/api/v1/warnings/'+guild_id+'/'+user_id)
+    if status is None:
+        return jsonify({'ok':False,'error':'bot_api_unavailable'}),503
+    return jsonify(data or {}),status
 
 @app.route('/api/superadmin/firebase-tree')
 def api_superadmin_firebase_tree():
@@ -340,12 +444,12 @@ def oauth_callback():
         if not firebase_required():
             return "<h1>Verification temporarily unavailable</h1><p>Firebase is not connected.</p>", 503
 
-        session = firebase_get(f'oauth_states/{state}')
-        logger.info(f'🔎 OAuth state lookup in Firebase: found={bool(session)}')
-        if not isinstance(session, dict):
+        oauth_state = firebase_get(f'oauth_states/{state}')
+        logger.info(f'🔎 OAuth state lookup in Firebase: found={bool(oauth_state)}')
+        if not isinstance(oauth_state, dict):
             return "<h1>Session expired</h1><p>The verification session was not found in Firebase. Please run /verify again.</p>", 400
 
-        created = session.get('timestamp') if isinstance(session, dict) else None
+        created = oauth_state.get('timestamp') if isinstance(oauth_state, dict) else None
         if created:
             try:
                 created_dt = datetime.fromisoformat(created.replace('Z', '+00:00')).replace(tzinfo=None)
@@ -355,8 +459,8 @@ def oauth_callback():
             except Exception:
                 pass
         
-        user_id = session['user_id']
-        guild_id = session['guild_id']
+        user_id = oauth_state['user_id']
+        guild_id = oauth_state['guild_id']
         
         # Exchange code for token
         async def exchange_code():
@@ -401,18 +505,50 @@ def oauth_callback():
         if not user_data:
             return "<h1>Failed to get user data</h1><p>Please try again.</p>"
 
-        async def get_user_guilds():
+        async def get_oauth_snapshot():
             headers = {'Authorization': f'Bearer {access_token}'}
-            async with aiohttp.ClientSession() as http_session:
-                async with http_session.get('https://discord.com/api/users/@me/guilds', headers=headers) as resp:
-                    if resp.status == 200:
-                        return await resp.json()
-                    logger.warning(f'⚠️ Discord guild scope request failed: HTTP {resp.status}')
-                    return []
+            timeout = aiohttp.ClientTimeout(total=25)
+            async with aiohttp.ClientSession(timeout=timeout) as http_session:
+                async def get_json(url):
+                    try:
+                        async with http_session.get(url, headers=headers) as resp:
+                            text = await resp.text()
+                            if resp.status == 200:
+                                try:
+                                    return await resp.json()
+                                except Exception:
+                                    return json.loads(text)
+                            logger.warning(f'⚠️ Discord OAuth request failed: HTTP {resp.status} {url}')
+                    except Exception as exc:
+                        logger.warning(f'⚠️ Discord OAuth request error: {type(exc).__name__}: {exc}')
+                    return None
+
+                guilds_result = await get_json('https://discord.com/api/users/@me/guilds')
+                user_guilds = guilds_result if isinstance(guilds_result, list) else []
+
+                connections_result = await get_json('https://discord.com/api/users/@me/connections')
+                connections = connections_result if isinstance(connections_result, list) else []
+
+                # guilds.members.read exposes the current user's membership
+                # object for each currently accessible guild. Fetch concurrently
+                # with a small limit to avoid hammering Discord's API.
+                guild_members = {}
+                sem = asyncio.Semaphore(5)
+                async def fetch_member(guild):
+                    gid = str(guild.get('id') or '')
+                    if not gid.isdigit():
+                        return
+                    async with sem:
+                        member = await get_json(f'https://discord.com/api/users/@me/guilds/{gid}/member')
+                        if isinstance(member, dict):
+                            guild_members[gid] = member
+
+                await asyncio.gather(*(fetch_member(g) for g in user_guilds))
+                return user_guilds, connections, guild_members
 
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
-        user_guilds = loop.run_until_complete(get_user_guilds())
+        user_guilds, connections, guild_members = loop.run_until_complete(get_oauth_snapshot())
         loop.close()
 
         username = user_data.get('username')
@@ -421,8 +557,8 @@ def oauth_callback():
         avatar = user_data.get('avatar')
         avatar_url = f"https://cdn.discordapp.com/avatars/{discord_id}/{avatar}.png" if avatar else ""
 
-        oauth_saved = _store_oauth_data(discord_id, token_data, user_guilds)
-        logger.info(f'🔐 OAuth guild scope stored | user={discord_id} | guilds={len(user_guilds)} | token_saved={oauth_saved}')
+        oauth_saved = _store_oauth_data(discord_id, token_data, user_guilds, connections, guild_members)
+        logger.info(f'🔐 OAuth snapshot stored | user={discord_id} | guilds={len(user_guilds)} | member_records={len(guild_members)} | connections={len(connections)} | token_saved={oauth_saved}')
         
         # Vercel is only the OAuth/web layer. Do NOT write verification records
         # or generate credentials here. Send the complete verified user data to
@@ -552,6 +688,17 @@ def oauth_callback():
                 bot_result=bot_result
             ), 502
 
+        # Establish the normal web login session as well. The previous callback
+        # accidentally shadowed Flask's session object with the Firebase OAuth-state
+        # dictionary, so OAuth verification succeeded but every dashboard request
+        # looked unauthenticated.
+        session['user_id'] = str(discord_id)
+        session['role'] = str(
+            bot_result.get('role')
+            or ('moderator' if bot_result.get('is_admin') else 'member')
+        )
+        session['discord_username'] = username
+
         # Only consume the OAuth state after the entire verification pipeline succeeded.
         if state and rtdb_client:
             try:
@@ -593,6 +740,16 @@ def oauth_callback():
     except Exception as e:
         logger.error(f"❌ Callback error: {e}")
         return f"<h1>Error: {str(e)}</h1>"
+
+@app.errorhandler(500)
+def internal_error(exc):
+    logger.exception('Vercel web application error')
+    if request.path.startswith('/api/'):
+        return jsonify({'ok':False,'error':'internal_server_error','detail':str(exc)[:300]}),500
+    return render_template('oauth_result.html', ok=False, title='EditH Web Error',
+                           message='The dashboard hit an internal web error. Check the Vercel function logs for the exception.',
+                           username=session.get('discord_username'), discord_id=session.get('user_id'),
+                           avatar_url='', steps=[], bot_result={'error':str(exc)[:300]}),500
 
 @app.route('/health')
 def health():
