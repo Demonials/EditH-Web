@@ -17,7 +17,25 @@ except ImportError:
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-app = Flask(__name__)
+APP_DIR = os.path.dirname(os.path.abspath(__file__))
+TEMPLATE_DIR = os.path.join(APP_DIR, 'templates')
+STATIC_DIR = os.path.join(APP_DIR, 'static')
+app = Flask(__name__, template_folder=TEMPLATE_DIR, static_folder=None)
+
+def safe_render(template_name, **context):
+    try:
+        return render_template(template_name, **context)
+    except Exception as exc:
+        logger.exception('Template render failed: %s', template_name)
+        title = str(context.get('title') or 'EditH Web Error')
+        message = str(context.get('message') or exc)
+        username = str(context.get('username') or '')
+        discord_id = str(context.get('discord_id') or '')
+        bot_result = context.get('bot_result')
+        detail = bot_result.get('error', '') if isinstance(bot_result, dict) else ''
+        html = f"""<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{title}</title><style>body{{margin:0;background:#090909;color:#eee;font-family:Arial,sans-serif;display:grid;place-items:center;min-height:100vh}}.card{{width:min(680px,90%);background:#111;border:1px solid #2b2b2b;border-radius:16px;padding:28px;box-sizing:border-box}}h1{{margin-top:0}}.muted{{color:#aaa}}pre{{white-space:pre-wrap;background:#080808;padding:14px;border-radius:10px;overflow:auto}}a{{color:#ff4b4b}}</style></head><body><main class="card"><h1>{title}</h1><p>{message}</p><p class="muted">{('User: '+username+' &nbsp; ID: '+discord_id) if username or discord_id else ''}</p><pre>{detail}</pre><p><a href="/login">Return to login</a></p></main></body></html>"""
+        return html
+
 # Vercel may run multiple serverless instances. A new random secret on every
 # cold start invalidates Flask login cookies and makes dashboards appear logged out.
 # FLASK_SECRET_KEY should be configured in Vercel; CLIENT_SECRET is only a stable
@@ -209,7 +227,7 @@ def _stored_oauth_guilds(user_id):
 # ============ ROUTES ============
 @app.route('/static/<path:filename>')
 def static_files(filename):
-    return send_from_directory(os.path.join(app.root_path, 'static'), filename)
+    return send_from_directory(STATIC_DIR, filename)
 
 @app.route('/favicon.ico')
 def favicon():
@@ -217,7 +235,7 @@ def favicon():
 
 @app.route('/')
 def home():
-    return render_template('index.html', config_client_id=os.getenv('CLIENT_ID',''))
+    return safe_render('index.html', config_client_id=os.getenv('CLIENT_ID',''))
 
 @app.route('/login', methods=['GET','POST'])
 def login():
@@ -239,7 +257,7 @@ def login():
                 session['role'] = str(record.get('role','member'))
                 return redirect('/moderator' if session['role'] == 'moderator' else '/user')
         error = 'Invalid username or password.'
-    return render_template('login.html', error=error)
+    return safe_render('login.html', title='EditH Login', message=error or 'Sign in to EditH.')
 
 @app.route('/logout')
 def logout():
@@ -267,17 +285,17 @@ def _bot_request(path, method='GET', payload=None):
 @app.route('/user')
 def user_page():
     if not _login_required(): return redirect('/login')
-    return render_template('user.html')
+    return safe_render('user.html')
 
 @app.route('/moderator')
 def moderator_page():
     if not _login_required() or session.get('role') not in ('moderator','superadmin'): return redirect('/login')
-    return render_template('moderator.html')
+    return safe_render('moderator.html')
 
 @app.route('/superadmin')
 def superadmin_page():
     if not _login_required() or session.get('role') != 'superadmin': return redirect('/login')
-    return render_template('superadmin.html')
+    return safe_render('superadmin.html')
 
 @app.route('/api/me')
 def api_me():
@@ -675,7 +693,7 @@ def oauth_callback():
         # "run /verify again" page. Render the real stage and error details.
         if not bot_result.get('ok'):
             steps = bot_result.get('steps') if isinstance(bot_result, dict) else []
-            return render_template(
+            return safe_render(
                 'oauth_result.html',
                 ok=False,
                 title='Discord Verification Failed',
@@ -724,7 +742,7 @@ def oauth_callback():
                 steps.append({'key': key, 'ok': bool(ok_step), 'label': label, 'detail': ''})
 
         complete = bool(bot_result.get('ok')) and bool(bot_result.get('role_assigned'))
-        return render_template(
+        return safe_render(
             'oauth_result.html',
             ok=complete,
             title='Verification Successful' if complete else 'Verification Failed',
@@ -746,10 +764,11 @@ def internal_error(exc):
     logger.exception('Vercel web application error')
     if request.path.startswith('/api/'):
         return jsonify({'ok':False,'error':'internal_server_error','detail':str(exc)[:300]}),500
-    return render_template('oauth_result.html', ok=False, title='EditH Web Error',
-                           message='The dashboard hit an internal web error. Check the Vercel function logs for the exception.',
-                           username=session.get('discord_username'), discord_id=session.get('user_id'),
-                           avatar_url='', steps=[], bot_result={'error':str(exc)[:300]}),500
+    body = safe_render('oauth_result.html', ok=False, title='EditH Web Error',
+                       message='The dashboard hit an internal web error. Check the Vercel function logs for the exception.',
+                       username=session.get('discord_username'), discord_id=session.get('user_id'),
+                       avatar_url='', steps=[], bot_result={'error':str(exc)[:300]})
+    return body, 500
 
 @app.route('/health')
 def health():
