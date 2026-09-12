@@ -250,14 +250,26 @@ def login():
             return redirect('/superadmin')
         creds = firebase_get('credentials_by_username/' + username)
         uid = creds.get('user_id') if isinstance(creds, dict) else None
+        # Recovery path for older credential records whose reverse username index
+        # was never written. This also makes migrations between bot versions safer.
+        if not uid and rtdb_client and username:
+            all_creds = firebase_get('credentials') or {}
+            if isinstance(all_creds, dict):
+                for candidate_uid, record in all_creds.items():
+                    if isinstance(record, dict) and str(record.get('cr_user') or record.get('username') or '') == username:
+                        uid = str(candidate_uid)
+                        firebase_set('credentials_by_username/' + username, {'user_id': uid, 'created_at': record.get('created_at')})
+                        break
         if uid:
             record = firebase_get('credentials/' + str(uid))
-            if isinstance(record, dict) and secrets.compare_digest(str(record.get('password','')), password):
+            stored_password = str(record.get('cr_password') or record.get('password') or '') if isinstance(record, dict) else ''
+            if stored_password and secrets.compare_digest(stored_password, password):
+                session.clear()
                 session['user_id'] = str(uid)
                 session['role'] = str(record.get('role','member'))
                 return redirect('/moderator' if session['role'] == 'moderator' else '/user')
         error = 'Invalid username or password.'
-    return safe_render('login.html', title='EditH Login', message=error or 'Sign in to EditH.')
+    return safe_render('login.html', title='EditH Login', error=error)
 
 @app.route('/logout')
 def logout():
@@ -268,7 +280,9 @@ def _login_required():
     return bool(session.get('user_id'))
 
 def _bot_request(path, method='GET', payload=None):
-    base=(os.getenv('BOT_API_URL') or '').rstrip('/')
+    base=(os.getenv('BOT_API_URL') or '').strip().rstrip('/')
+    if base and not base.startswith(('http://','https://')):
+        base='https://'+base
     key=os.getenv('CONTROL_API_KEY') or ''
     if not base or not key: return None, 503
     async def run():
@@ -295,7 +309,7 @@ def moderator_page():
 @app.route('/superadmin')
 def superadmin_page():
     if not _login_required() or session.get('role') != 'superadmin': return redirect('/login')
-    return safe_render('superadmin.html')
+    return safe_render('superadmin.html', config_client_id=os.getenv('CLIENT_ID',''), bot_invite_permissions=os.getenv('BOT_INVITE_PERMISSIONS','0'))
 
 @app.route('/api/me')
 def api_me():
@@ -365,8 +379,9 @@ def api_guilds():
 def api_superadmin_guilds():
     if session.get('role')!='superadmin': return jsonify({'error':'forbidden'}),403
     status,data=_bot_request('/api/v1/superadmin/guilds')
-    if status >= 400 or not isinstance(data,dict):
-        return jsonify({'ok':False,'error':(data or {}).get('error','bot_api_unavailable'),'guilds':[]}), status
+    if status is None or status >= 400 or not isinstance(data,dict):
+        code = status if isinstance(status, int) else 503
+        return jsonify({'ok':False,'error':(data or {}).get('error','bot_api_unavailable'),'guilds':[]}), code
     return jsonify(data),status
 
 @app.route('/api/guild/<guild_id>')
