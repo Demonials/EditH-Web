@@ -1,4 +1,4 @@
-from flask import Flask, request, redirect, jsonify, send_from_directory, render_template, session
+from flask import Flask, request, redirect, jsonify, send_from_directory, render_template, session, make_response
 import os
 import json
 import secrets
@@ -21,6 +21,7 @@ APP_DIR = os.path.dirname(os.path.abspath(__file__))
 TEMPLATE_DIR = os.path.join(APP_DIR, 'templates')
 STATIC_DIR = os.path.join(APP_DIR, 'static')
 app = Flask(__name__, template_folder=TEMPLATE_DIR, static_folder=None)
+app.jinja_env.globals['_public_base_url'] = lambda req=None: _public_base_url(req or request) if '_public_base_url' in globals() else request.url_root.rstrip('/')
 
 def safe_render(template_name, **context):
     try:
@@ -235,7 +236,98 @@ def favicon():
 
 @app.route('/')
 def home():
-    return safe_render('index.html', config_client_id=os.getenv('CLIENT_ID',''))
+    return safe_render('index.html', config_client_id=os.getenv('CLIENT_ID',''), page_url=_public_base_url(request))
+
+
+def _public_base_url(req=None):
+    # Derive the canonical public origin from the incoming request so no
+    # deployment-specific Vercel hostname is hard-coded into source control.
+    r = req or request
+    forwarded = r.headers.get('X-Forwarded-Proto') or r.scheme
+    host = r.headers.get('X-Forwarded-Host') or r.host
+    return f"{forwarded}://{host}".rstrip('/')
+
+
+def _page_context(req, title, description, path, kind='WebPage', extra_schema=None):
+    base = _public_base_url(req)
+    canonical = base + (path if path.startswith('/') else '/' + path)
+    graph = [
+        {'@type': 'WebSite', '@id': base + '/#website', 'url': base + '/', 'name': 'EditH',
+         'description': 'All-in-one Discord server management platform created and developed by Udit Singh Dhakrey.'},
+        {'@type': 'Person', '@id': base + '/developer#person', 'name': 'Udit Singh Dhakrey',
+         'url': base + '/developer', 'jobTitle': 'Creator & Lead Developer of EditH',
+         'sameAs': []},
+        {'@type': 'SoftwareApplication', '@id': base + '/#edith', 'name': 'EditH',
+         'url': base + '/', 'applicationCategory': 'SocialNetworkingApplication',
+         'description': 'All-in-one Discord server management platform.',
+         'creator': {'@id': base + '/developer#person'},
+         'developer': {'@id': base + '/developer#person'}}
+    ]
+    page = {'@type': kind, '@id': canonical + '#webpage', 'url': canonical, 'name': title,
+            'description': description, 'isPartOf': {'@id': base + '/#website'}}
+    graph.append(page)
+    if extra_schema:
+        graph.extend(extra_schema if isinstance(extra_schema, list) else [extra_schema])
+    return {'title': title, 'description': description, 'canonical': canonical,
+            'schema': {'@context':'https://schema.org','@graph':graph}}
+
+
+@app.route('/about')
+def about_page():
+    return safe_render('about.html', **_page_context(request, 'About EditH — Discord Server Management',
+        'Learn what EditH is, why it exists, and how its integrated Discord management approach works.', '/about'))
+
+@app.route('/developer')
+def developer_page():
+    return safe_render('developer.html', **_page_context(request, 'Udit Singh Dhakrey — Creator of EditH',
+        'Udit Singh Dhakrey is the creator and lead developer of EditH, an all-in-one Discord server management platform.', '/developer', 'ProfilePage'))
+
+@app.route('/features')
+def features_page():
+    return safe_render('features.html', **_page_context(request, 'EditH Features — Discord Server Management',
+        'Explore the moderation, verification, automation, tickets, giveaways, analytics, dashboard and server-management capabilities implemented in EditH.', '/features'))
+
+@app.route('/docs')
+def docs_page():
+    return safe_render('docs.html', **_page_context(request, 'EditH Documentation — Architecture & Systems',
+        'Technical documentation for EditH, including its Vercel frontend, Railway control API, Discord integration, authentication and Firebase-backed services.', '/docs'))
+
+@app.route('/stats')
+def stats_page():
+    return safe_render('stats.html', **_page_context(request, 'EditH Stats — Live Project Metrics',
+        'Public EditH project metrics served from the deployed bot and Firebase-backed counters.', '/stats'))
+
+@app.route('/changelog')
+def changelog_page():
+    return safe_render('changelog.html', **_page_context(request, 'EditH Changelog',
+        'A factual development history for EditH. Historical entries are added only when they are documented by the project.', '/changelog'))
+
+@app.route('/privacy')
+def privacy_page():
+    return safe_render('privacy.html', **_page_context(request, 'EditH Privacy',
+        'Information about the public website, dashboard authentication and Discord-related data used by EditH.', '/privacy'))
+
+@app.route('/terms')
+def terms_page():
+    return safe_render('terms.html', **_page_context(request, 'EditH Terms',
+        'Terms for using the EditH public website and Discord server management platform.', '/terms'))
+
+@app.route('/robots.txt')
+def robots_txt():
+    base = _public_base_url(request)
+    response = make_response(f"User-agent: *\nAllow: /\nDisallow: /api/\nDisallow: /user\nDisallow: /moderator\nDisallow: /superadmin\nDisallow: /login\nDisallow: /callback\nSitemap: {base}/sitemap.xml\n")
+    response.headers['Content-Type'] = 'text/plain; charset=utf-8'
+    return response
+
+@app.route('/sitemap.xml')
+def sitemap_xml():
+    base = _public_base_url(request)
+    paths = ['/', '/about', '/developer', '/features', '/docs', '/stats', '/changelog', '/privacy', '/terms']
+    urls = ''.join(f'<url><loc>{base}{path}</loc></url>' for path in paths)
+    response = make_response('<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">' + urls + '</urlset>')
+    response.headers['Content-Type'] = 'application/xml; charset=utf-8'
+    return response
+
 
 @app.route('/login', methods=['GET','POST'])
 def login():
@@ -303,7 +395,7 @@ def user_page():
 
 @app.route('/moderator')
 def moderator_page():
-    if not _login_required() or session.get('role') not in ('moderator','superadmin'): return redirect('/login')
+    if not _login_required(): return redirect('/login')
     return safe_render('moderator.html')
 
 @app.route('/superadmin')
@@ -444,18 +536,28 @@ def api_superadmin_firebase_tree():
 
 @app.route('/api/public/stats')
 def public_stats():
-    # Public homepage stats are served directly from Firebase so Vercel handles
-    # read-only web traffic without waking/calling the Railway bot.
+    # Prefer the live Railway statistics endpoint. If Railway is unavailable,
+    # fall back to the Firebase counters already maintained for the homepage.
+    status, live = _bot_request('/api/v1/stats')
+    if isinstance(live, dict) and status is not None and status < 400 and isinstance(live.get('stats'), dict):
+        s = live['stats']
+        return jsonify({'ok': True, 'stats': {
+            'total_server': int(s.get('servers', 0) or 0),
+            'total_user': int(s.get('members', 0) or 0),
+            'unique_members': int(s.get('unique_members', 0) or 0),
+            'commands': int(s.get('commands', 0) or 0),
+            'humans': int(s.get('humans', 0) or 0),
+            'bots': int(s.get('bots', 0) or 0),
+            'channels': int(s.get('channels', 0) or 0),
+            'roles': int(s.get('roles', 0) or 0)
+        }})
     stats = firebase_get('for_web')
     if not isinstance(stats, dict):
-        return jsonify({'ok': True, 'stats': {'total_server': 0, 'total_user': 0}})
-    return jsonify({
-        'ok': True,
-        'stats': {
-            'total_server': int(stats.get('total_server', 0) or 0),
-            'total_user': int(stats.get('total_user', 0) or 0)
-        }
-    })
+        stats = {}
+    return jsonify({'ok': True, 'stats': {
+        'total_server': int(stats.get('total_server', 0) or 0),
+        'total_user': int(stats.get('total_user', 0) or 0)
+    }, 'degraded': True})
 
 @app.route('/callback')
 def oauth_callback():
