@@ -230,6 +230,12 @@ def _stored_oauth_guilds(user_id):
 def static_files(filename):
     return send_from_directory(STATIC_DIR, filename)
 
+@app.route('/google7b748eab11b4c758.html')
+def google_verification():
+    return """google-site-verification: google7b748eab11b4c758.html""", 200, {
+        'Content-Type': 'text/html'
+    }
+
 @app.route('/favicon.ico')
 def favicon():
     return ('', 204)
