@@ -240,6 +240,336 @@ def google_verification():
 def favicon():
     return ('', 204)
 
+@app.route('/privacy')
+def privacy():
+    return(
+        '''
+EditH — Privacy Policy
+
+Last Updated: September 18, 2026
+
+This Privacy Policy explains how EditH ("EditH", "we", "us", or "our") collects, uses, stores, and protects information when you use our Discord application.
+
+EditH is an independent third-party Discord application operated by Udit Singh Dhakrey.
+
+1. Information We May Collect
+
+Depending on the features you use, EditH may process information made available through Discord's API and interactions with the application.
+
+This may include:
+
+- Discord user ID
+- Discord username or display information
+- Discord server/guild ID
+- Server name
+- Channel IDs
+- Role IDs
+- User roles and permissions
+- Configuration settings for a server
+- Information provided through commands, buttons, menus, forms, tickets, giveaways, or other interactions
+- Moderation-related information when a server administrator enables moderation features
+- Bot configuration and preference data
+- Technical information required to operate and secure the service
+
+EditH does not request or intentionally collect your Discord password or Discord authentication credentials through the bot.
+
+2. Information We Do Not Intentionally Collect
+
+EditH does not intentionally request your Discord password, authentication token, or other private Discord login credentials.
+
+Never provide your Discord password or authentication token to EditH or anyone claiming to represent EditH.
+
+3. How We Use Information
+
+We may use collected information to:
+
+- Provide EditH's features;
+- Configure and operate EditH on Discord servers;
+- Store server configuration and preferences;
+- Provide moderation and automation functionality;
+- Process user interactions with EditH;
+- Provide support;
+- Detect abuse and security issues;
+- Prevent unauthorized access;
+- Debug and improve the application;
+- Maintain service reliability; and
+- Comply with applicable legal obligations.
+
+4. Server Configuration Data
+
+When EditH is installed on a server, the application may store configuration information necessary for its features to operate.
+
+Examples may include:
+
+- Enabled or disabled features;
+- Channel configuration;
+- Role configuration;
+- Moderation settings;
+- Ticket settings;
+- Giveaway settings;
+- Leveling configuration;
+- Welcome settings;
+- Automation settings; and
+- Other server-specific preferences.
+
+5. User Interaction Data
+
+Some EditH features may process information provided when users interact with the application.
+
+For example, a ticket, giveaway, moderation action, or other feature may require processing the user's Discord ID or interaction information to provide that feature.
+
+The exact information processed depends on the features enabled by the server administrator.
+
+6. Discord API
+
+EditH uses Discord's APIs and services to provide its functionality.
+
+Information accessible through Discord is subject to the permissions granted to EditH and the functionality enabled by server administrators or users.
+
+EditH does not intentionally request information that is unnecessary for the functionality it provides.
+
+7. Data Sharing
+
+We do not sell Discord user data.
+
+We may share information with service providers that are necessary to operate EditH, such as hosting, database, logging, monitoring, or infrastructure providers, where applicable.
+
+Such providers may process information only as necessary to provide their services to us.
+
+We may also disclose information where required by law, legal process, or to protect the security and integrity of EditH and its users.
+
+8. Data Storage
+
+EditH may store information using third-party infrastructure and database providers.
+
+The specific providers used by EditH may change over time as the service develops.
+
+We take reasonable technical and organizational measures designed to protect stored information from unauthorized access, alteration, disclosure, or destruction.
+
+However, no internet service can guarantee absolute security.
+
+9. Data Retention
+
+We retain information only for as long as reasonably necessary for the purposes described in this Privacy Policy, unless a longer period is required by law.
+
+Server administrators may request deletion of EditH-related server configuration data where applicable.
+
+Some information may need to be retained temporarily for security, fraud prevention, legal, or technical reasons.
+
+10. Removing EditH
+
+A server administrator can remove EditH from their Discord server at any time.
+
+Removing EditH may stop future collection of information from that server, but information already stored may not automatically be deleted unless the applicable deletion process is used.
+
+11. Data Deletion Requests
+
+If you would like to request deletion of personal information or server-related information associated with EditH, contact us at:
+
+Email:
+[YOUR SUPPORT EMAIL]
+
+Please include enough information for us to understand the request and identify the relevant data without unnecessarily providing sensitive information.
+
+We may need to verify the legitimacy of a request before processing it.
+
+12. Children's Privacy
+
+EditH is intended to operate within Discord and does not knowingly request personal information from children in violation of applicable law.
+
+Users must comply with Discord's age requirements and applicable laws when using Discord and EditH.
+
+13. Security
+
+We take reasonable measures to protect information processed by EditH.
+
+However, no service, network, database, or transmission over the internet can be guaranteed to be completely secure.
+
+14. Third-Party Services
+
+EditH may use third-party services for hosting, databases, monitoring, analytics, email, or other infrastructure.
+
+These services may process information as necessary to provide their services.
+
+Their own privacy policies may also apply.
+
+15. Discord
+
+EditH is a third-party application and is not operated by or affiliated with Discord Inc.
+
+Discord separately processes information according to its own Privacy Policy.
+
+Discord Privacy Policy:
+https://discord.com/privacy
+
+Discord Terms of Service:
+https://discord.com/terms
+
+16. Changes to This Privacy Policy
+
+We may update this Privacy Policy when EditH's functionality, data practices, infrastructure, or applicable legal requirements change.
+
+The "Last Updated" date will be updated when changes are made.
+
+17. Contact
+
+For privacy questions or data requests, contact:
+
+Udit Singh Dhakrey
+
+Email:
+giyuiscooking@gmail.com
+
+Privacy Policy:
+https://edith-bot-api.vercel.app/privacy
+
+Terms of Service:
+https://edith-bot-api.vercel.app/terms
+        '''
+    )
+
+@app.route('/terms')
+def tos():
+    return(
+        '''
+        EditH — Terms of Service
+
+Last Updated: September 18, 2026
+
+1. Acceptance of Terms
+
+These Terms of Service ("Terms") govern your use of EditH ("EditH", "the App", "we", "us", or "our"), a Discord application developed and operated by Udit Singh Dhakrey.
+
+By installing, accessing, or using EditH, you agree to these Terms. If you do not agree with these Terms, you should not install or use EditH.
+
+2. About EditH
+
+EditH is a Discord application that provides server management and community features, which may include moderation, automation, tickets, giveaways, leveling, utility features, configuration tools, and other Discord-related functionality.
+
+Features may be added, modified, suspended, or removed over time.
+
+3. Eligibility
+
+You must comply with Discord's applicable age requirements and all applicable laws when using EditH.
+
+You must also comply with Discord's Terms of Service, Community Guidelines, Developer Policy, and other applicable Discord policies.
+
+4. Use of EditH
+
+You agree to use EditH only for lawful purposes and in accordance with these Terms and Discord's policies.
+
+You must not:
+
+- Use EditH to violate Discord's Terms or policies.
+- Use EditH to conduct illegal activities.
+- Attempt to interfere with, disrupt, or compromise EditH.
+- Attempt to gain unauthorized access to EditH, its systems, databases, or infrastructure.
+- Abuse, exploit, reverse engineer, or intentionally overload EditH.
+- Use EditH to distribute malware, scams, phishing content, or other harmful material.
+- Use EditH to collect information from other users without appropriate authorization.
+- Circumvent security, permission, rate-limit, or access-control mechanisms.
+
+5. Server Administrator Responsibility
+
+The person who installs or configures EditH on a Discord server is responsible for configuring the application appropriately for that server.
+
+Server administrators are responsible for ensuring that their use of EditH complies with Discord's policies and applicable law.
+
+EditH does not determine whether a server's configuration, moderation decisions, or community rules are appropriate.
+
+6. Discord
+
+EditH operates through Discord's platform and APIs.
+
+Your use of Discord remains subject to Discord's Terms of Service, Community Guidelines, Privacy Policy, Developer Policy, and other applicable Discord policies.
+
+EditH is an independent third-party application and is not operated by or affiliated with Discord Inc. unless explicitly stated otherwise.
+
+Discord's services are governed by Discord's own terms and policies.
+
+7. Availability
+
+We aim to keep EditH available and reliable, but we do not guarantee that the service will always be available, uninterrupted, secure, or error-free.
+
+Maintenance, updates, technical problems, third-party outages, Discord API changes, or other circumstances may temporarily affect EditH.
+
+8. Changes to EditH
+
+We may modify, update, add, or remove features from EditH at any time.
+
+We may also discontinue particular features when necessary for technical, security, policy, or operational reasons.
+
+9. Suspension or Termination
+
+We may restrict or terminate access to EditH if we reasonably believe that a user or server is:
+
+- Violating these Terms;
+- Violating Discord policies;
+- Abusing the application;
+- Attempting to compromise the application or its infrastructure; or
+- Engaging in activity that creates a security, legal, or operational risk.
+
+Server administrators may remove EditH from their Discord server at any time.
+
+10. Intellectual Property
+
+The EditH software, branding, logos, website, original designs, and other original materials associated with EditH are owned by or licensed to the developer unless otherwise stated.
+
+You may not copy, redistribute, sell, or commercially exploit EditH's proprietary materials without permission.
+
+Discord trademarks and assets remain the property of Discord Inc.
+
+11. Third-Party Services
+
+EditH may depend on Discord and other third-party services.
+
+We are not responsible for interruptions, changes, failures, or limitations caused by third-party services.
+
+12. Disclaimer
+
+EditH is provided on an "as is" and "as available" basis to the maximum extent permitted by applicable law.
+
+We do not guarantee that EditH will meet every user's requirements or operate without errors.
+
+13. Limitation of Liability
+
+To the maximum extent permitted by applicable law, the developer of EditH will not be liable for indirect, incidental, special, consequential, or other damages arising from your use of or inability to use EditH.
+
+Nothing in these Terms excludes liability that cannot legally be excluded under applicable law.
+
+14. Changes to These Terms
+
+We may update these Terms from time to time.
+
+When material changes are made, we will update the "Last Updated" date and may provide additional notice where appropriate.
+
+Continued use of EditH after an update means that you accept the updated Terms to the extent permitted by applicable law.
+
+15. Contact
+
+For questions, support, or legal concerns regarding EditH, contact:
+
+Developer: Udit Singh Dhakrey
+
+Email: giyuiscooking@gmail.com
+
+16. Governing Law
+
+These Terms are subject to applicable laws and regulations. Any governing-law or dispute provisions should be interpreted and applied in accordance with applicable law in the relevant jurisdiction.
+
+17. Related Policies
+
+Privacy Policy:
+https://edith-bot-api.vercel.app/privacy
+
+Discord Terms of Service:
+https://discord.com/terms
+
+Discord Privacy Policy:
+https://discord.com/privacy
+        '''
+    )
+
 @app.route('/')
 def home():
     return safe_render('index.html', config_client_id=os.getenv('CLIENT_ID',''), page_url=_public_base_url(request))
